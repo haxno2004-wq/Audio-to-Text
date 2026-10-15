@@ -8,9 +8,9 @@ from app.config import settings
 class Deepgram:
     def __init__(self):
         self.name = "deepgram"
-        self.label = "Deepgram General (Tamil)"
-        # Use the "general" model which fully supports Tamil language transcription
-        self.model = "general"
+        # Always use settings.deepgram_model ("general")
+        self.model = settings.deepgram_model or "general"
+        self.label = f"Deepgram ({self.model})"
 
     @classmethod
     def enabled(cls) -> bool:
@@ -27,17 +27,26 @@ class Deepgram:
         with open(audio_path, "rb") as file:
             audio_bytes = file.read()
 
-        # Configured with model="general" and language="ta" as required by Deepgram's routing
-        options = {
+        progress_callback(0.4)
+        
+        # Configure transcription call based on language setting
+        kwargs = {
+            "request": audio_bytes,
             "model": self.model,
-            "language": "ta",
             "smart_format": True,
             "punctuate": True,
             "utterances": True,
         }
 
-        progress_callback(0.4)
-        response = client.listen.v1.media.transcribe_file(request=audio_bytes, **options)
+        # If language is set to 'detect', use detect_language=True; otherwise pass language code 'ta'
+        target_lang = language or settings.deepgram_language
+        if target_lang == "detect":
+            kwargs["detect_language"] = True
+        else:
+            kwargs["language"] = target_lang if target_lang != "auto" else "ta"
+
+        response = client.listen.v1.media.transcribe_file(**kwargs)
+        
         progress_callback(0.8)
 
         text = ""
@@ -48,16 +57,15 @@ class Deepgram:
                 alternatives = channels[0].alternatives
                 if alternatives and len(alternatives) > 0:
                     alt = alternatives[0]
-                    text = getattr(alt, "transcript", "")
-                    raw_words = getattr(alt, "words", [])
-                    if raw_words:
-                        for w in raw_words:
-                            words.append(Word(
-                                text=getattr(w, "word", ""),
-                                start=getattr(w, "start", 0.0),
-                                end=getattr(w, "end", 0.0),
-                                conf=getattr(w, "confidence", 0.9)
-                            ))
+                    text = getattr(alt, "transcript", "") or ""
+                    raw_words = getattr(alt, "words", []) or []
+                    for w in raw_words:
+                        words.append(Word(
+                            text=getattr(w, "word", ""),
+                            start=getattr(w, "start", 0.0),
+                            end=getattr(w, "end", 0.0),
+                            conf=getattr(w, "confidence", 0.9)
+                        ))
         except (AttributeError, IndexError):
             pass
 
@@ -71,7 +79,7 @@ class Deepgram:
             model=self.model,
             text=text,
             words=words,
-            language="ta"
+            language=target_lang
         )
 
 def register() -> Deepgram:
