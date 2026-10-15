@@ -38,9 +38,7 @@ class Settings:
     whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
     whisper_compute: str = os.getenv("WHISPER_COMPUTE", "int8")
     whisper_beam: int = int(os.getenv("WHISPER_BEAM", "5"))
-```[cite: 6]
 
----
 ### Step 3: Implement Groq Whisper Provider Make sure your providers list includes Groq instead of local Whisper. Create or update your Groq transcription provider file (e.g., inside an `app/providers/groq.py` or your provider registry):
 
 ```python
