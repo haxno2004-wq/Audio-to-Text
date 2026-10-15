@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from deepgram import DeepgramClient, PrerecordedOptions
+from deepgram import DeepgramClient
 from app.schema import ProviderResult, Word
 from app.config import settings
 
@@ -24,14 +24,14 @@ class Deepgram:
 
         payload = {"buffer": buffer_data}
         
-        # 'language': 'multi' enables robust code-switching for mixed Tamil-English audio
-        options = PrerecordedOptions(
-            model=self.model,
-            language="multi",
-            smart_format=True,
-            punctuate=True,
-            utterances=True,
-        )
+        # Using a standard dictionary payload for options ensures compatibility across SDK versions
+        options = {
+            "model": self.model,
+            "language": "multi",  # Enables robust multi-language code-switching for Tamil-English
+            "smart_format": True,
+            "punctuate": True,
+            "utterances": True,
+        }
 
         progress_callback(0.4)
         response = client.listen.rest.v("1").transcribe_file(payload, options)
