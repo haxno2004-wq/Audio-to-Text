@@ -9,7 +9,7 @@ class AssemblyAI:
     def __init__(self):
         self.name = "assemblyai"
         self.label = "AssemblyAI"
-        self.model = "universal"
+        self.model = "universal-3-5-pro"
 
     @classmethod
     def enabled(cls) -> bool:
@@ -23,10 +23,10 @@ class AssemblyAI:
         
         aai.settings.api_key = api_key
         
-        # Configure transcription with language support for Tamil/English mix
+        # Use the updated plural speech_models parameter
         config = aai.TranscriptionConfig(
             language_code="ta",
-            speech_model=aai.SpeechModel.universal
+            speech_models=["universal-3-5-pro", "universal-2"]
         )
 
         progress_callback(0.3)

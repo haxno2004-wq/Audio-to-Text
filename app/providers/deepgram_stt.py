@@ -21,7 +21,7 @@ class Deepgram:
         if not api_key:
             raise RuntimeError("DEEPGRAM_API_KEY is not set")
         
-        client = DeepgramClient(api_key)
+        client = DeepgramClient(api_key=api_key)
         
         with open(audio_path, "rb") as file:
             buffer_data = file.read()
@@ -30,7 +30,7 @@ class Deepgram:
         
         options = {
             "model": self.model,
-            "language": "multi",  # Enables robust multi-language code-switching for Tamil-English
+            "language": "multi",
             "smart_format": True,
             "punctuate": True,
             "utterances": True,
