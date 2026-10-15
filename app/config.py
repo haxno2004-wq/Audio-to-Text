@@ -32,12 +32,53 @@ class Settings:
     models_dir: Path = Path(os.getenv("MODELS_DIR", str(ROOT / "models")))
     max_upload_mb: int = int(os.getenv("MAX_UPLOAD_MB", "500"))
 
-    # Local model (faster-whisper)
-    whisper_enabled: bool = os.getenv("WHISPER_ENABLED", "1") == "1"
-    whisper_model: str = os.getenv("WHISPER_MODEL", "large-v3")
-    whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")        # cpu | cuda | auto
+# Local model (disabled for cloud memory safety)
+    whisper_enabled: bool = os.getenv("WHISPER_ENABLED", "0") == "1"
+    whisper_model: str = os.getenv("WHISPER_MODEL", "large-v3-turbo")
+    whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
     whisper_compute: str = os.getenv("WHISPER_COMPUTE", "int8")
     whisper_beam: int = int(os.getenv("WHISPER_BEAM", "5"))
+```[cite: 6]
+
+---
+### Step 3: Implement Groq Whisper Provider Make sure your providers list includes Groq instead of local Whisper. Create or update your Groq transcription provider file (e.g., inside an `app/providers/groq.py` or your provider registry):
+
+```python
+import os
+from groq import Groq
+from app.schema import ProviderResult, Word
+
+class GroqWhisperProvider:
+    def __init__(self):
+        self.name = "whisper"  # matches expected engine ID
+        self.label = "Groq Whisper"
+        self.model = "whisper-large-v3-turbo"
+        self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+    def transcribe(self, audio_path, duration, language, progress_callback) -> ProviderResult:
+        progress_callback(0.1)
+        with open(audio_path, "rb") as file:
+            transcript = self.client.audio.transcriptions.create(
+                file=(str(audio_path), file.read()),
+                model=self.model,
+                response_format="verbose_json"
+            )
+        progress_callback(0.9)
+        
+        words = []
+        if hasattr(transcript, "words") and transcript.words:
+            for w in transcript.words:
+                words.append(Word(text=w.get("word", ""), start=w.get("start", 0.0), end=w.get("end", 0.0), conf=0.95))
+        
+        progress_callback(1.0)
+        return ProviderResult(
+            name=self.name,
+            label=self.label,
+            model=self.model,
+            text=transcript.text,
+            words=words,
+            language=getattr(transcript, "language", language)
+        )
 
     # Deepgram
     deepgram_key: str = os.getenv("DEEPGRAM_API_KEY", "").strip()
