@@ -11,6 +11,10 @@ class Deepgram:
         self.label = f"Deepgram {settings.deepgram_model}"
         self.model = settings.deepgram_model
 
+    @classmethod
+    def enabled(cls) -> bool:
+        return bool(settings.deepgram_key or os.environ.get("DEEPGRAM_API_KEY"))
+
     def transcribe(self, audio_path, duration, language, progress_callback) -> ProviderResult:
         progress_callback(0.1)
         api_key = settings.deepgram_key or os.environ.get("DEEPGRAM_API_KEY")
@@ -24,7 +28,6 @@ class Deepgram:
 
         payload = {"buffer": buffer_data}
         
-        # Using a standard dictionary payload for options ensures compatibility across SDK versions
         options = {
             "model": self.model,
             "language": "multi",  # Enables robust multi-language code-switching for Tamil-English
