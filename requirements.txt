@@ -6,3 +6,4 @@ python-dotenv
 deepgram-sdk
 assemblyai
 groq
+rapidfuzz
