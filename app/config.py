@@ -41,7 +41,7 @@ class Settings:
 
     # Deepgram
     deepgram_key: str = os.getenv("DEEPGRAM_API_KEY", "").strip()
-    deepgram_model: str = os.getenv("DEEPGRAM_MODEL", "nova-3")
+    deepgram_model: str = os.getenv("DEEPGRAM_MODEL", "nova-2")
     deepgram_language: str = os.getenv("DEEPGRAM_LANGUAGE", "detect")
 
     # AssemblyAI
