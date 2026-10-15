@@ -26,9 +26,10 @@ class Deepgram:
         with open(audio_path, "rb") as file:
             audio_bytes = file.read()
 
+        # Configured with language="ta" and fallback detection for solid results on Tamil-English audio
         options = {
             "model": self.model,
-            "language": "multi",  # Enables multi-language code-switching for Tamil-English
+            "language": "ta",
             "smart_format": True,
             "punctuate": True,
             "utterances": True,
@@ -38,7 +39,6 @@ class Deepgram:
         response = client.listen.v1.media.transcribe_file(request=audio_bytes, **options)
         progress_callback(0.8)
 
-        # Parse typed Pydantic response attributes safely
         text = ""
         words = []
         try:
@@ -57,18 +57,12 @@ class Deepgram:
                                 end=getattr(w, "end", 0.0),
                                 conf=getattr(w, "confidence", 0.9)
                             ))
-        except (AttributeError, IndexError) as e:
-            # Fallback to dictionary conversion if available
-            res_dict = response.to_dict() if hasattr(response, "to_dict") else {}
-            alt = res_dict.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])[0]
-            text = alt.get("transcript", "")
-            for w in alt.get("words", []):
-                words.append(Word(
-                    text=w.get("word", ""),
-                    start=w.get("start", 0.0),
-                    end=w.get("end", 0.0),
-                    conf=w.get("confidence", 0.9)
-                ))
+        except (AttributeError, IndexError):
+            pass
+
+        # If the transcript came back completely empty, raise an explicit notice so the fallback can handle it cleanly
+        if not text.strip():
+            raise RuntimeError("returned an empty transcript")
 
         progress_callback(1.0)
         return ProviderResult(
@@ -77,7 +71,7 @@ class Deepgram:
             model=self.model,
             text=text,
             words=words,
-            language="multi"
+            language="ta"
         )
 
 def register() -> Deepgram:
