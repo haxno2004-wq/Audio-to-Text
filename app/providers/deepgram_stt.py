@@ -5,7 +5,7 @@ from deepgram import DeepgramClient, PrerecordedOptions
 from app.schema import ProviderResult, Word
 from app.config import settings
 
-class DeepgramProvider:
+class Deepgram:
     def __init__(self):
         self.name = "deepgram"
         self.label = f"Deepgram {settings.deepgram_model}"
@@ -19,7 +19,7 @@ class DeepgramProvider:
         
         client = DeepgramClient(api_key)
         
-        with open(audio_path, "wb" if False else "rb") as file:
+        with open(audio_path, "rb") as file:
             buffer_data = file.read()
 
         payload = {"buffer": buffer_data}
@@ -37,7 +37,6 @@ class DeepgramProvider:
         response = client.listen.rest.v("1").transcribe_file(payload, options)
         progress_callback(0.8)
 
-        # Parse response safely
         res_dict = response.to_dict() if hasattr(response, "to_dict") else response
         alternatives = res_dict.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])
         alt = alternatives[0] if alternatives else {}
@@ -62,5 +61,5 @@ class DeepgramProvider:
             language="multi"
         )
 
-def register() -> DeepgramProvider:
-    return DeepgramProvider()
+def register() -> Deepgram:
+    return Deepgram()

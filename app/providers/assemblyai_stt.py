@@ -5,7 +5,7 @@ import assemblyai as aai
 from app.schema import ProviderResult, Word
 from app.config import settings
 
-class AssemblyAIProvider:
+class AssemblyAI:
     def __init__(self):
         self.name = "assemblyai"
         self.label = "AssemblyAI"
@@ -37,7 +37,6 @@ class AssemblyAIProvider:
         words = []
         if transcript.words:
             for w in transcript.words:
-                # Convert milliseconds to seconds
                 words.append(Word(
                     text=w.text,
                     start=w.start / 1000.0,
@@ -55,5 +54,5 @@ class AssemblyAIProvider:
             language="ta"
         )
 
-def register() -> AssemblyAIProvider:
-    return AssemblyAIProvider()
+def register() -> AssemblyAI:
+    return AssemblyAI()
