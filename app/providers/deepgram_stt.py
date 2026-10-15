@@ -28,30 +28,47 @@ class Deepgram:
 
         options = {
             "model": self.model,
-            "language": "multi",  # Enables robust multi-language code-switching for Tamil-English
+            "language": "multi",  # Enables multi-language code-switching for Tamil-English
             "smart_format": True,
             "punctuate": True,
             "utterances": True,
         }
 
         progress_callback(0.4)
-        # Use the correct v1 media prerecorded file endpoint
         response = client.listen.v1.media.transcribe_file(request=audio_bytes, **options)
         progress_callback(0.8)
 
-        res_dict = response.to_dict() if hasattr(response, "to_dict") else response
-        alternatives = res_dict.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])
-        alt = alternatives[0] if alternatives else {}
-        
-        text = alt.get("transcript", "")
+        # Parse typed Pydantic response attributes safely
+        text = ""
         words = []
-        for w in alt.get("words", []):
-            words.append(Word(
-                text=w.get("word", ""),
-                start=w.get("start", 0.0),
-                end=w.get("end", 0.0),
-                conf=w.get("confidence", 0.9)
-            ))
+        try:
+            channels = response.results.channels
+            if channels and len(channels) > 0:
+                alternatives = channels[0].alternatives
+                if alternatives and len(alternatives) > 0:
+                    alt = alternatives[0]
+                    text = getattr(alt, "transcript", "")
+                    raw_words = getattr(alt, "words", [])
+                    if raw_words:
+                        for w in raw_words:
+                            words.append(Word(
+                                text=getattr(w, "word", ""),
+                                start=getattr(w, "start", 0.0),
+                                end=getattr(w, "end", 0.0),
+                                conf=getattr(w, "confidence", 0.9)
+                            ))
+        except (AttributeError, IndexError) as e:
+            # Fallback to dictionary conversion if available
+            res_dict = response.to_dict() if hasattr(response, "to_dict") else {}
+            alt = res_dict.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])[0]
+            text = alt.get("transcript", "")
+            for w in alt.get("words", []):
+                words.append(Word(
+                    text=w.get("word", ""),
+                    start=w.get("start", 0.0),
+                    end=w.get("end", 0.0),
+                    conf=w.get("confidence", 0.9)
+                ))
 
         progress_callback(1.0)
         return ProviderResult(
