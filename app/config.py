@@ -41,7 +41,6 @@ class Settings:
 
 ### Step 3: Implement Groq Whisper Provider Make sure your providers list includes Groq instead of local Whisper. Create or update your Groq transcription provider file (e.g., inside an `app/providers/groq.py` or your provider registry):
 
-```python
 import os
 from groq import Groq
 from app.schema import ProviderResult, Word
