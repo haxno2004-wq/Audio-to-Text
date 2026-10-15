@@ -8,8 +8,9 @@ from app.config import settings
 class Deepgram:
     def __init__(self):
         self.name = "deepgram"
-        self.label = f"Deepgram {settings.deepgram_model}"
-        self.model = settings.deepgram_model
+        self.label = "Deepgram General (Tamil)"
+        # Use the "general" model which fully supports Tamil language transcription
+        self.model = "general"
 
     @classmethod
     def enabled(cls) -> bool:
@@ -26,7 +27,7 @@ class Deepgram:
         with open(audio_path, "rb") as file:
             audio_bytes = file.read()
 
-        # Configured with language="ta" and fallback detection for solid results on Tamil-English audio
+        # Configured with model="general" and language="ta" as required by Deepgram's routing
         options = {
             "model": self.model,
             "language": "ta",
@@ -60,7 +61,6 @@ class Deepgram:
         except (AttributeError, IndexError):
             pass
 
-        # If the transcript came back completely empty, raise an explicit notice so the fallback can handle it cleanly
         if not text.strip():
             raise RuntimeError("returned an empty transcript")
 
