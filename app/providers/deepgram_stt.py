@@ -1,55 +1,66 @@
 from __future__ import annotations
 
-import time
-from pathlib import Path
-from typing import Callable
+import os
+from deepgram import DeepgramClient, PrerecordedOptions
+from app.schema import ProviderResult, Word
+from app.config import settings
 
-import httpx
+class DeepgramProvider:
+    def __init__(self):
+        self.name = "deepgram"
+        self.label = f"Deepgram {settings.deepgram_model}"
+        self.model = settings.deepgram_model
 
-from ..config import settings
-from ..schema import ProviderResult, Word
-from .base import Provider, http_timeout, with_retry
+    def transcribe(self, audio_path, duration, language, progress_callback) -> ProviderResult:
+        progress_callback(0.1)
+        api_key = settings.deepgram_key or os.environ.get("DEEPGRAM_API_KEY")
+        if not api_key:
+            raise RuntimeError("DEEPGRAM_API_KEY is not set")
+        
+        client = DeepgramClient(api_key)
+        
+        with open(audio_path, "wb" if False else "rb") as file:
+            buffer_data = file.read()
 
-URL = "https://api.deepgram.com/v1/listen"
-
-
-class Deepgram(Provider):
-    name = "deepgram"
-    label = f"Deepgram {settings.deepgram_model}"
-
-    @classmethod
-    def enabled(cls) -> bool:
-        return bool(settings.deepgram_key)
-
-    def transcribe(self, audio: Path, duration: float, language: str | None, on_progress: Callable[[float], None]) -> ProviderResult:
-        t0 = time.time()
-        lang = language or settings.deepgram_language
-        params = {"model": settings.deepgram_model, "smart_format": "true", "punctuate": "true"}
-        if lang in ("detect", "auto", ""):
-            params["detect_language"] = "true"
-        else:
-            params["language"] = lang       # "multi" enables code-switching on Nova-3
-        body = audio.read_bytes()
-
-        def call():
-            r = httpx.post(
-                URL, params=params, content=body, timeout=http_timeout(),
-                headers={"Authorization": f"Token {settings.deepgram_key}", "Content-Type": "audio/flac"},
-            )
-            r.raise_for_status()
-            return r.json()
-
-        data = with_retry(call)
-        channel = data["results"]["channels"][0]
-        alt = channel["alternatives"][0]
-        words = [
-            Word(w.get("punctuated_word") or w["word"], w["start"], w["end"], w.get("confidence"))
-            for w in alt.get("words", [])
-        ]
-        detected = channel.get("detected_language") or (channel.get("languages") or [None])[0]
-        return ProviderResult(
-            name=self.name, label=self.label, model=settings.deepgram_model,
-            text=alt.get("transcript", ""), words=words,
-            language=detected or (None if lang in ("detect", "auto", "multi", "") else lang),
-            elapsed=time.time() - t0,
+        payload = {"buffer": buffer_data}
+        
+        # 'language': 'multi' enables robust code-switching for mixed Tamil-English audio
+        options = PrerecordedOptions(
+            model=self.model,
+            language="multi",
+            smart_format=True,
+            punctuate=True,
+            utterances=True,
         )
+
+        progress_callback(0.4)
+        response = client.listen.rest.v("1").transcribe_file(payload, options)
+        progress_callback(0.8)
+
+        # Parse response safely
+        res_dict = response.to_dict() if hasattr(response, "to_dict") else response
+        alternatives = res_dict.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])
+        alt = alternatives[0] if alternatives else {}
+        
+        text = alt.get("transcript", "")
+        words = []
+        for w in alt.get("words", []):
+            words.append(Word(
+                text=w.get("word", ""),
+                start=w.get("start", 0.0),
+                end=w.get("end", 0.0),
+                conf=w.get("confidence", 0.9)
+            ))
+
+        progress_callback(1.0)
+        return ProviderResult(
+            name=self.name,
+            label=self.label,
+            model=self.model,
+            text=text,
+            words=words,
+            language="multi"
+        )
+
+def register() -> DeepgramProvider:
+    return DeepgramProvider()

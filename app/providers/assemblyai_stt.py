@@ -1,74 +1,59 @@
-"""AssemblyAI via REST: upload -> create transcript -> poll."""
 from __future__ import annotations
 
-import time
-from pathlib import Path
-from typing import Callable
+import os
+import assemblyai as aai
+from app.schema import ProviderResult, Word
+from app.config import settings
 
-import httpx
+class AssemblyAIProvider:
+    def __init__(self):
+        self.name = "assemblyai"
+        self.label = "AssemblyAI"
+        self.model = "universal"
 
-from ..config import settings
-from ..schema import ProviderResult, Word
-from .base import Provider, ProviderError, http_timeout, with_retry
-
-BASE = "https://api.assemblyai.com"
-
-
-class AssemblyAI(Provider):
-    name = "assemblyai"
-    label = "AssemblyAI Universal"
-
-    @classmethod
-    def enabled(cls) -> bool:
-        return bool(settings.assemblyai_key)
-
-    def transcribe(self, audio: Path, duration: float, language: str | None, on_progress: Callable[[float], None]) -> ProviderResult:
-        t0 = time.time()
-        headers = {"authorization": settings.assemblyai_key}
-        body = audio.read_bytes()
-
-        def upload():
-            r = httpx.post(f"{BASE}/v2/upload", headers=headers, content=body, timeout=http_timeout())
-            r.raise_for_status()
-            return r.json()["upload_url"]
-
-        audio_url = with_retry(upload)
-        payload: dict = {
-            "audio_url": audio_url,
-            "speech_models": list(settings.assemblyai_models),  # required by the API
-            "punctuate": True,
-            "format_text": True,
-        }
-        if language:
-            payload["language_code"] = language
-        else:
-            payload["language_detection"] = True
-
-        def create():
-            r = httpx.post(f"{BASE}/v2/transcript", headers=headers, json=payload, timeout=http_timeout())
-            r.raise_for_status()
-            return r.json()["id"]
-
-        tid = with_retry(create)
-        deadline = time.time() + max(900.0, duration * 3)
-        while True:
-            def poll():
-                r = httpx.get(f"{BASE}/v2/transcript/{tid}", headers=headers, timeout=http_timeout())
-                r.raise_for_status()
-                return r.json()
-
-            data = with_retry(poll)
-            if data["status"] == "completed":
-                break
-            if data["status"] == "error":
-                raise ProviderError(data.get("error", "AssemblyAI reported an error"))
-            if time.time() > deadline:
-                raise ProviderError("Timed out waiting for AssemblyAI")
-            time.sleep(3)
-
-        words = [Word(w["text"], w["start"] / 1000, w["end"] / 1000, w.get("confidence")) for w in data.get("words") or []]
-        return ProviderResult(
-            name=self.name, label=self.label, model=",".join(settings.assemblyai_models),
-            text=data.get("text") or "", words=words, language=data.get("language_code"),
-            elapsed=time.time() - t0,
+    def transcribe(self, audio_path, duration, language, progress_callback) -> ProviderResult:
+        progress_callback(0.1)
+        api_key = settings.assemblyai_key or os.environ.get("ASSEMBLYAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("ASSEMBLYAI_API_KEY is not set")
+        
+        aai.settings.api_key = api_key
+        
+        # Configure transcription with language support for Tamil/English mix
+        config = aai.TranscriptionConfig(
+            language_code="ta",
+            speech_model=aai.SpeechModel.universal
         )
+
+        progress_callback(0.3)
+        transcriber = aai.Transcriber()
+        transcript = transcriber.transcribe(str(audio_path), config=config)
+        
+        if transcript.status == aai.TranscriptStatus.error:
+            raise RuntimeError(f"AssemblyAI failed: {transcript.error}")
+
+        progress_callback(0.8)
+
+        words = []
+        if transcript.words:
+            for w in transcript.words:
+                # Convert milliseconds to seconds
+                words.append(Word(
+                    text=w.text,
+                    start=w.start / 1000.0,
+                    end=w.end / 1000.0,
+                    conf=w.confidence
+                ))
+
+        progress_callback(1.0)
+        return ProviderResult(
+            name=self.name,
+            label=self.label,
+            model=self.model,
+            text=transcript.text or "",
+            words=words,
+            language="ta"
+        )
+
+def register() -> AssemblyAIProvider:
+    return AssemblyAIProvider()
