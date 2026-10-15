@@ -24,20 +24,19 @@ class Deepgram:
         client = DeepgramClient(api_key=api_key)
         
         with open(audio_path, "rb") as file:
-            buffer_data = file.read()
+            audio_bytes = file.read()
 
-        payload = {"buffer": buffer_data}
-        
         options = {
             "model": self.model,
-            "language": "multi",
+            "language": "multi",  # Enables robust multi-language code-switching for Tamil-English
             "smart_format": True,
             "punctuate": True,
             "utterances": True,
         }
 
         progress_callback(0.4)
-        response = client.listen.rest.v("1").transcribe_file(payload, options)
+        # Use the correct v1 media prerecorded file endpoint
+        response = client.listen.v1.media.transcribe_file(request=audio_bytes, **options)
         progress_callback(0.8)
 
         res_dict = response.to_dict() if hasattr(response, "to_dict") else response
