@@ -11,6 +11,10 @@ class AssemblyAI:
         self.label = "AssemblyAI"
         self.model = "universal"
 
+    @classmethod
+    def enabled(cls) -> bool:
+        return bool(settings.assemblyai_key or os.environ.get("ASSEMBLYAI_API_KEY"))
+
     def transcribe(self, audio_path, duration, language, progress_callback) -> ProviderResult:
         progress_callback(0.1)
         api_key = settings.assemblyai_key or os.environ.get("ASSEMBLYAI_API_KEY")
