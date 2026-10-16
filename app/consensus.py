@@ -257,6 +257,74 @@ def _paragraphs(words: list[dict]) -> str:
     return "\n\n".join(join_tokens(p) for p in paras)
 
 
+# --------------------------------------------------------------------------- speakers
+
+def _speaker_blocks(all_words: list[dict], results: list[ProviderResult]) -> list[dict] | None:
+    """Turn mixed-provider speaker hints into Person 1 / Person 2 dialogue.
+
+    Each consensus word takes a majority vote of the diarized turns that cover it,
+    then consecutive same-speaker words are merged into blocks like
+    {speaker: 1, start: .., end: .., text: "..."}. Returns None when no provider
+    produced diarization, so the UI can hide the person view.
+    """
+    turns: list[tuple[float, float, int, float]] = []   # start, end, raw speaker id, weight
+    raw_ids: set[int] = set()
+    for r in results:
+        for s, e, spk in r.turns or []:
+            turns.append((float(s), float(e), int(spk), 1.0))
+            raw_ids.add(int(spk))
+    if not turns:
+        return None
+
+    def overlap(a0, a1, b0, b1):
+        return max(0.0, min(a1, b1) - max(a0, b0))
+
+    votes: list[int | None] = []
+    for word in all_words:
+        w0, w1 = word["start"], word["end"]
+        tally: dict[int, float] = {}
+        for s, e, spk, weight in turns:
+            ov = overlap(w0, w1, s, e)
+            if ov > 0:
+                share = ov / max(w1 - w0, 1e-6)
+                tally[spk] = tally.get(spk, 0.0) + weight * share
+        if not tally and raw_ids:
+            # fall back to nearest turn within 1.5s
+            cands = [(abs(w0 - e), abs(s - w1), spk) for s, e, spk, _ in turns]
+            near = min(cands, key=lambda c: c[0] + c[1])
+            if near[0] < 1.5 or near[1] < 1.5:
+                tally[near[2]] = 0.5
+        votes.append(max(tally, key=tally.get) if tally else None)
+
+    # Renumber raw ids in order of first appearance -> Person 1..N
+    order: list[int] = []
+    for v in votes:
+        if v is not None and v not in order:
+            order.append(v)
+    person = {raw: i + 1 for i, raw in enumerate(order)}
+    for word, v in zip(all_words, votes):
+        word["speaker"] = person[v] if v is not None and v in person else None
+
+    blocks: list[dict] = []
+    for word in all_words:
+        spk = word.get("speaker")
+        if not spk:
+            continue
+        # attach speakerless neighbours inside a block's time range
+        cur = blocks[-1] if blocks else None
+        if cur and cur["speaker"] == spk and word["start"] - cur["end"] < 2.0:
+            cur["text"] = join_tokens(cur["_parts"] + [word["text"]])
+            cur["_parts"].append(word["text"])
+            cur["end"] = word["end"]
+        else:
+            blocks.append({"speaker": spk, "start": word["start"], "end": word["end"],
+                           "text": word["text"], "_parts": [word["text"]]})
+    for b in blocks:
+        b.pop("_parts", None)
+        b["start"], b["end"] = round(b["start"], 2), round(b["end"], 2)
+    return blocks or None
+
+
 def build_consensus(results: list[ProviderResult], weights: dict[str, float] | None = None,
                     window_seconds: float = 30.0) -> dict:
     if not results:
@@ -307,4 +375,5 @@ def build_consensus(results: list[ProviderResult], weights: dict[str, float] | N
         "agreement": round(sum(w["agree"] for w in all_words) / denom, 4) if all_words else 0.0,
         "segments": segments,
         "model_agreement": model_agreement,
+        "speakers": _speaker_blocks(all_words, results),
     }

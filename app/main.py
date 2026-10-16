@@ -93,6 +93,16 @@ def delete_job(job_id: str):
     return {"deleted": job_id}
 
 
+@app.delete("/api/jobs")
+def clear_history():
+    """Clear every finished/failed job (running ones keep going)."""
+    running = {r["id"] for r in db.list_jobs() if r["status"] in ("queued", "processing")}
+    removed = db.delete_all_jobs(skip_running=bool(running))
+    for job_id in removed:
+        shutil.rmtree(settings.upload_dir(job_id), ignore_errors=True)
+    return {"deleted": removed, "skipped_running": len(running)}
+
+
 # The built React app. Mounted last so the /api routes above take priority.
 if STATIC_DIR.is_dir():
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="ui")

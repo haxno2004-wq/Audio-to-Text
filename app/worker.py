@@ -14,6 +14,7 @@ import threading
 from . import audio, db
 from .config import settings
 from .consensus import build_consensus
+from .polish import polish
 from .orchestrator import run_all
 
 log = logging.getLogger(__name__)
@@ -69,8 +70,17 @@ def run_job(job_id: str) -> None:
 
         db.update_job(job_id, stage="Finalizing", progress=0.92)
         merged = build_consensus(results, settings.weights, settings.window_seconds)
+
+        # AI polish: spelling/grammar cleanup through Groq llama (skip on failure).
+        polished = polish(merged["text"])
+        if polished:
+            db.update_job(job_id, polished_text=polished, stage="Polished")
+
         payload = {
-            "final": {k: merged[k] for k in ("text", "language", "agreement", "segments")},
+            "final": {"text": merged["text"], "language": merged["language"],
+                      "agreement": merged["agreement"], "segments": merged["segments"],
+                      "speakers": merged.get("speakers")},
+            "polished": polished,
             "models": [
                 {"name": r.name, "label": r.label, "model": r.model, "text": r.text,
                  "language": r.language, "elapsed": round(r.elapsed, 1),

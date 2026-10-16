@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at DESC);
 """
 
-_UPDATABLE = {"status", "stage", "progress", "language", "duration", "final_text", "result_json", "error"}
+_UPDATABLE = {"status", "stage", "progress", "language", "duration", "final_text", "result_json", "polished_text", "error"}
 
 
 @contextmanager
@@ -47,6 +47,10 @@ def init_db() -> None:
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     with conn() as c:
         c.executescript(SCHEMA)
+        # lightweight migration for DBs created before the polish column existed
+        cols = {r[1] for r in c.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "polished_text" not in cols:
+            c.execute("ALTER TABLE jobs ADD COLUMN polished_text TEXT")
 
 
 def create_job(job_id: str, filename: str, language_hint: str | None) -> None:
@@ -92,6 +96,23 @@ def list_jobs(limit: int = 100) -> list[dict]:
 def delete_job(job_id: str) -> None:
     with conn() as c:
         c.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+
+
+def delete_all_jobs(skip_running: bool = True) -> list[str]:
+    """Clear history. Running/queued jobs are skipped unless avoid that is impossible."""
+    with conn() as c:
+        if skip_running:
+            rows = c.execute(
+                "SELECT id FROM jobs WHERE status NOT IN ('queued','processing')"
+            ).fetchall()
+        else:
+            rows = c.execute("SELECT id FROM jobs").fetchall()
+        ids = [r["id"] for r in rows]
+        if skip_running:
+            c.execute("DELETE FROM jobs WHERE id IN (%s)" % ",".join("?" * len(ids)), ids) if ids else None
+        else:
+            c.execute("DELETE FROM jobs")
+    return ids
 
 
 def reset_unfinished() -> list[str]:

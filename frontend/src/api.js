@@ -10,6 +10,7 @@ async function json(res) {
 export const listJobs = () => fetch('/api/jobs').then(json)
 export const getJob = (id) => fetch(`/api/jobs/${id}`).then(json)
 export const deleteJob = (id) => fetch(`/api/jobs/${id}`, { method: 'DELETE' }).then(json)
+export const clearHistory = () => fetch('/api/jobs', { method: 'DELETE' }).then(json)
 
 // XHR instead of fetch so we can report upload progress
 export function uploadAudio(file, language, onProgress) {

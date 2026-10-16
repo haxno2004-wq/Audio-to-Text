@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { deleteJob, getJob, listJobs, uploadAudio } from './api'
+import { clearHistory, deleteJob, getJob, listJobs, uploadAudio } from './api'
 import History from './components/History.jsx'
 import UploadPanel from './components/UploadPanel.jsx'
 import Progress from './components/Progress.jsx'
@@ -53,6 +53,12 @@ export default function App() {
     refresh()
   }
 
+  const onClearAll = async () => {
+    try { await clearHistory() } catch (e) { setError(e.message); return }
+    setActiveId(null)
+    refresh()
+  }
+
   const running = job && (job.status === 'queued' || job.status === 'processing')
 
   let main
@@ -72,7 +78,7 @@ export default function App() {
 
   return (
     <div className="shell">
-      <History jobs={jobs} activeId={activeId} onSelect={setActiveId} onNew={() => setActiveId(null)} onDelete={onDelete} />
+      <History jobs={jobs} activeId={activeId} onSelect={setActiveId} onNew={() => setActiveId(null)} onDelete={onDelete} onClearAll={onClearAll} />
       <main className="main">
         {error && <p className="error" role="alert">{error}</p>}
         {main}
