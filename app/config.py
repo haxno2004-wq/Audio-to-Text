@@ -39,9 +39,14 @@ class Settings:
     whisper_compute: str = os.getenv("WHISPER_COMPUTE", "int8")
     whisper_beam: int = int(os.getenv("WHISPER_BEAM", "5"))
 
-    # Groq (free tier: whisper + llama)
+    # Groq (free tier: whisper + llama). Full large-v3 beats turbo in WER.
     groq_key: str = os.getenv("GROQ_API_KEY", "").strip()
-    groq_model: str = os.getenv("GROQ_MODEL", "whisper-large-v3-turbo").strip()
+    groq_model: str = os.getenv("GROQ_MODEL", "whisper-large-v3").strip()
+
+    # ElevenLabs Scribe v2 (Tamil supported, word timestamps, diarization).
+    # Free tier: ~4.5h of transcription per month on the API free plan.
+    elevenlabs_key: str = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "scribe_v2").strip()
 
     # AI spelling polish (Groq llama). On by default; can be turned off in .env.
     polish_enabled: bool = os.getenv("POLISH_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
@@ -62,7 +67,7 @@ class Settings:
 
     # Consensus
     weights: dict = field(default_factory=lambda: _weights(os.getenv(
-        "MODEL_WEIGHTS", "groq=1.1,whisper_local=1.1,deepgram=1.0,assemblyai=1.0")))
+        "MODEL_WEIGHTS", "elevenlabs=1.25,groq=1.15,whisper_local=1.1,deepgram=1.0,assemblyai=1.0")))
     window_seconds: float = float(os.getenv("CONSENSUS_WINDOW_SECONDS", "30"))
 
     # Speaker turns / Person 1 / Person 2

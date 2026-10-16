@@ -1,11 +1,12 @@
 from .assemblyai_stt import AssemblyAI
 from .base import Provider, ProviderError
 from .deepgram_stt import Deepgram
+from .elevenlabs_stt import ElevenLabs
 from .groq_stt import GroqProvider
 from .whisper_local import WhisperLocal
 
 # To add another API model: write one file with a Provider subclass and add it here.
-ALL = (WhisperLocal, GroqProvider, Deepgram, AssemblyAI)
+ALL = (WhisperLocal, GroqProvider, Deepgram, AssemblyAI, ElevenLabs)
 
 
 def enabled_providers() -> list[Provider]:
