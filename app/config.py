@@ -44,9 +44,10 @@ class Settings:
     groq_model: str = os.getenv("GROQ_MODEL", "whisper-large-v3").strip()
 
     # ElevenLabs Scribe v2 (Tamil supported, word timestamps, diarization).
-    # Free tier: ~4.5h of transcription per month on the API free plan.
+    # Free plan includes a monthly transcription allowance — see elevenlabs.io pricing.
     elevenlabs_key: str = os.getenv("ELEVENLABS_API_KEY", "").strip()
     elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "scribe_v2").strip()
+    elevenlabs_num_speakers: int = int(os.getenv("ELEVENLABS_NUM_SPEAKERS", "0") or 0)  # 0 = auto
 
     # AI spelling polish (Groq llama). On by default; can be turned off in .env.
     polish_enabled: bool = os.getenv("POLISH_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")

@@ -1,27 +1,31 @@
 from __future__ import annotations
 
+import math
 import os
 import time
 
 import httpx
 
+from .base import with_retry, http_timeout
 from ..schema import ProviderResult, Word
-from ..config import settings
+from app.config import settings
 
-API_URL = "https://api.elevenlabs.io/v1/speech-to-text"
+_API = "https://api.elevenlabs.io/v1/speech-to-text"
 
 
 class ElevenLabs:
-    """ElevenLabs Scribe v2 — top-tier accuracy, Tamil (`tam`) supported,
-    per-word timestamps and speaker diarization in one call.
+    """ElevenLabs Scribe v2 — currently the most accurate Tamil ASR available.
 
-    Uses raw HTTP (no heavy SDK). Timestamps arrive in seconds already.
+    diarize=True annotates each word with speaker_id ('speaker_0', ...); we turn
+    that into turns for the consensus speaker layer (Person 1 / Person 2).
+    Word confidence comes from exp(logprob). Returns seconds already; language
+    code is ISO-639-3 ('tam') — normalized to 'ta' to match the other providers.
     """
 
     def __init__(self):
         self.name = "elevenlabs"
         self.model = settings.elevenlabs_model
-        self.label = f"ElevenLabs Scribe ({self.model})"
+        self.label = f"ElevenLabs ({self.model})"
 
     @classmethod
     def enabled(cls) -> bool:
@@ -29,59 +33,82 @@ class ElevenLabs:
 
     def transcribe(self, audio_path, duration, language, progress_callback) -> ProviderResult:
         progress_callback(0.1)
-        api_key = settings.elevenlabs_key or os.environ.get("ELEVENLABS_API_KEY")
-        if not api_key:
+        key = settings.elevenlabs_key or os.environ.get("ELEVENLABS_API_KEY")
+        if not key:
             raise RuntimeError("ELEVENLABS_API_KEY is not set")
 
-        hint = (language or "").strip().lower()
-        data = {
+        with open(audio_path, "rb") as f:
+            buf = f.read()
+
+        data: dict[str, str] = {
             "model_id": self.model,
-            "timestamps_granularity": "word",
             "diarize": "true",
+            "timestamps_granularity": "word",
+            "tag_audio_events": "true",
         }
+        hint = (language or "").strip().lower()
         if hint and hint not in ("auto", "detect", "multi"):
             data["language_code"] = hint
+        if settings.elevenlabs_num_speakers:
+            data["num_speakers"] = str(settings.elevenlabs_num_speakers)
 
+        progress_callback(0.35)
         t0 = time.time()
-        with open(audio_path, "rb") as f:
-            with httpx.Client(timeout=900.0) as client:
-                resp = client.post(
-                    API_URL,
-                    headers={"xi-api-key": api_key},
-                    files={"file": (audio_path.name, f, "audio/flac")},
-                    data=data,
-                )
-                elapsed = time.time() - t0
-                if resp.status_code != 200:
-                    raise RuntimeError(
-                        f"HTTP {resp.status_code}: {resp.text[:200]}"
-                    )
-                body = resp.json()
+
+        def call():
+            r = httpx.post(
+                _API,
+                headers={"xi-api-key": key},
+                data=data,
+                files={"file": (str(audio_path), buf)},
+                timeout=http_timeout(),
+            )
+            r.raise_for_status()
+            return r.json()
+
+        res = with_retry(call)
         progress_callback(0.85)
 
-        words: list[Word] = []
-        speakers: dict = {}
-        turns: list[tuple[float, float, int]] = []
-        for w in body.get("words") or []:
-            if w.get("type") and w["type"] != "word":           # spacing/punctuation marks
-                if w["type"] == "spacing":
-                    continue
-            spk = w.get("speaker_id")
-            start, end = float(w.get("start") or 0.0), float(w.get("end") or 0.0)
-            if spk is not None:
-                conf = w.get("logprob")
-                # Scribe gives no numeric confidence; synthesize from logprob if present
-                confidence = _logprob(conf)
-                words.append(Word(text=w.get("text") or "", start=start, end=end, conf=confidence,
-                                  speaker=_map_speaker(spk, speakers)))
-                cur = turns[-1] if turns else None
-                if cur and cur[2] == speakers.get(spk, -1) and abs(cur[1] - start) < 2.0:
-                    turns[-1] = (cur[0], end, cur[2])
-                else:
-                    sid = _map_speaker(spk, speakers)
-                    turns.append((start, end, sid))
+        words = []
+        for w in res.get("words") or []:
+            if w.get("type") == "audio_event":
+                continue
+            text = (w.get("text") or "").strip()
+            if not text:
+                continue
+            lp = w.get("logprob")
+            conf = max(0.3, min(0.99, math.exp(lp))) if isinstance(lp, (int, float)) else None
+            words.append(Word(
+                text=text,
+                start=w.get("start") or 0.0,
+                end=w.get("end") or 0.0,
+                conf=conf,
+                speaker=_spk_int(w.get("speaker_id")),
+            ))
 
-        if not words and not (body.get("text") or "").strip():
+        # word speaker ids -> utterance turns for the consensus speaker layer
+        lang = res.get("language_code") or hint or "auto"
+        lang = {"tam": "ta", "hin": "hi", "deu": "de", "fra": "fr", "spa": "es",
+                "ita": "it", "por": "pt", "nld": "nl", "rus": "ru", "tur": "tr",
+                "ara": "ar", "jpn": "ja", "kor": "ko", "zho": "zh", "ben": "bn",
+                "mal": "ml", "kan": "kn", "tel": "te", "mar": "mr"}.get(lang, lang)
+        turns = []
+        cur_speaker = None
+        seg_start = None
+        seg_end = None
+        for w in words:
+            spk = w.speaker or 0
+            if spk != cur_speaker:
+                if cur_speaker is not None:
+                    turns.append((seg_start, seg_end, cur_speaker))
+                cur_speaker, seg_start, seg_end = spk, w.start, w.end
+            else:
+                seg_end = max(seg_end, w.end)
+        if cur_speaker is not None:
+            turns.append((seg_start, seg_end, cur_speaker))
+
+        text = res.get("text") or ""
+        if not text.strip():
             raise RuntimeError("returned an empty transcript")
 
         progress_callback(1.0)
@@ -89,29 +116,20 @@ class ElevenLabs:
             name=self.name,
             label=self.label,
             model=self.model,
-            text=body.get("text") or "",
+            text=text,
             words=words,
-            language=body.get("language_code") or hint or "auto",
-            elapsed=elapsed,
+            language=lang,
+            elapsed=time.time() - t0,
             turns=turns,
         )
 
 
-def _map_speaker(raw: str, speakers: dict) -> int:
-    """Scribe speaker ids like 'speaker_A1' or 'A' -> stable small ints."""
-    if raw not in speakers:
-        speakers[raw] = len(speakers)
-    return speakers[raw]
-
-
-def _logprob(lp):
-    try:
-        lp = float(lp)
-    except (TypeError, ValueError):
-        return None
-    if lp >= 0:
-        return 0.95
-    return max(0.40, min(0.97, 1.0 + max(lp, -3.5) / 6.0))
+def _spk_int(speaker_id) -> int:
+    if isinstance(speaker_id, int):
+        return speaker_id
+    s = str(speaker_id or "")
+    digits = "".join(ch for ch in s if ch.isdigit())
+    return int(digits) if digits else 0
 
 
 def register() -> ElevenLabs:
