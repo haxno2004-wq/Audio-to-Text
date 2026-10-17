@@ -51,6 +51,34 @@ def _get_model():
         return _model
 
 
+def _to_array(audio: Path):
+    """Decode to 16 kHz mono float32 via ffmpeg.
+
+    Hand faster-whisper a numpy array: its decode_audio() path uses PyAV kwargs
+    that newer av builds (Python 3.14 wheels ship av 19) have removed.
+    """
+    import numpy as np
+    import subprocess
+    import shutil
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        try:
+            import imageio_ffmpeg
+            ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception as e:
+            raise RuntimeError(f"ffmpeg required for local Whisper: {e}") from e
+    proc = subprocess.run(
+        [ffmpeg, "-v", "error", "-i", str(audio), "-vn", "-ac", "1", "-ar", "16000",
+         "-f", "s16le", "pipe:1"],
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        raise RuntimeError(f"could not decode audio for local Whisper: {proc.stderr[-120:]!r}")
+    return np.frombuffer(proc.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+
+
 class WhisperLocal(Provider):
     name = "whisper"
     label = f"Whisper {settings.whisper_model} (local)"
@@ -62,7 +90,7 @@ class WhisperLocal(Provider):
     def _decode(self, audio: Path, duration: float, language: str | None, on_progress):
         model = _get_model()
         segments, info = model.transcribe(
-            str(audio),
+            _to_array(audio),
             beam_size=settings.whisper_beam,
             word_timestamps=True,
             vad_filter=True,
