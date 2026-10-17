@@ -12,14 +12,17 @@ from app.config import settings
 class Deepgram:
     """Deepgram prerecorded Listen v1 (deepgram-sdk v7 keyword-arg client).
 
-    - The recurring "Deepgram failed" was the BASE model ('general'/'base')
-      being asked for Tamil. Base does not cover Tamil; nova-3 (default) does,
-      and on nova-3 language='multi' enables code-switching.
-    - Auto language: nova-3 'multi' first; if it comes back empty we re-run the
-      base model with detect_language=True, then (if even that is silent) chase
-      the strongest per-language alternative returned by detection.
+    - The recurring "Deepgram failed" had two causes: the BASE model does not
+      cover Tamil, and language='multi' is only documented for nova-3's
+      code-switching set (en, es, fr, de, hi, ru, pt, ja, it, nl) — NOT Tamil.
+      So: a language hint goes straight to nova-3 with that code; auto-detection
+      runs base with detect_language=True first, and if the detected language is
+      nova-3-capable we re-run nova-3 on it for the better transcript.
     - Deepgram returns times in milliseconds; this provider converts to seconds.
     """
+
+    # Languages documented for nova-3 code-switching ('multi') at the time of writing.
+    _MULTI_SET = {"en", "es", "fr", "de", "hi", "ru", "pt", "ja", "it", "nl"}
 
     def __init__(self):
         self.name = "deepgram"
@@ -91,29 +94,43 @@ class Deepgram:
         hint = (language or "").strip().lower()
         model = self.model
 
-        if hint and hint not in ("auto", "detect", "multi"):
+        # 'multi' is only valid for nova-3's code-switching set — never force it.
+        if hint == "multi" and model.startswith("nova-3"):
+            progress_callback(0.3)
+            res, elapsed = self._request(client, audio_path, model, settings.multi_language_token)
+            progress_callback(0.75)
+            text, detected, words, turns = self._extract(res)
+        elif hint and hint not in ("auto", "detect", "multi"):
             progress_callback(0.3)
             res, elapsed = self._request(client, audio_path, model, hint)
             progress_callback(0.75)
             text, detected, words, turns = self._extract(res)
-        elif model.startswith("nova-3"):
-            # auto: nova-3 code-switching first
-            progress_callback(0.3)
-            res, elapsed = self._request(client, audio_path, model, settings.multi_language_token)
-            progress_callback(0.65)
-            text, detected, words, turns = self._extract(res)
-
-            if not text.strip() and settings.deepgram_detect_fallback:
-                progress_callback(0.8)
-                res2, _ = self._request(client, audio_path, settings.deepgram_base_model, "")
-                text2, detected2, words2, turns2 = self._extract(res2)
-                if text2.strip():
-                    text, detected, words, turns = text2, detected2, words2, turns2
         else:
-            progress_callback(0.3)
-            res, elapsed = self._request(client, audio_path, model, "")
-            progress_callback(0.75)
-            text, detected, words, turns = self._extract(res)
+            # Auto: base model detects the language (broad coverage), then the
+            # better nova-3 model re-runs on the detected code when possible.
+            progress_callback(0.25)
+            res, elapsed = self._request(client, audio_path, settings.deepgram_base_model, "")
+            base_text, detected, base_words, base_turns = self._extract(res)
+            if not base_text.strip():
+                raise RuntimeError("returned an empty transcript")
+
+            if settings.deepgram_detect_fallback and detected:
+                code = _base_code(detected)
+                if code:
+                    try:
+                        progress_callback(0.6)
+                        res2, _t = self._request(client, audio_path, model, code)
+                        text, _d, words, turns = self._extract(res2)
+                        elapsed += _t
+                        detected = code
+                        text = text or base_text
+                    except Exception:
+                        # nova-3 may reject a rare language code; base result is usable.
+                        text, words, turns = base_text, base_words, base_turns
+                else:
+                    text, words, turns = base_text, base_words, base_turns
+            else:
+                text, words, turns = base_text, base_words, base_turns
 
         if not text.strip():
             raise RuntimeError("returned an empty transcript")
@@ -129,6 +146,16 @@ class Deepgram:
             elapsed=elapsed,
             turns=turns,
         )
+
+
+def _base_code(code: str | None) -> str | None:
+    """'ta' or 'en-IN' -> primary code for a nova-3 re-run; '' for 'multi'/'und'."""
+    if not code:
+        return None
+    primary = code.split("-")[0].strip().lower()
+    if primary in ("", "multi", "und", "unknown"):
+        return None
+    return primary
 
 
 def register() -> Deepgram:

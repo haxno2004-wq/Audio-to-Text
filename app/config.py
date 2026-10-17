@@ -39,6 +39,10 @@ class Settings:
     whisper_compute: str = os.getenv("WHISPER_COMPUTE", "int8")
     whisper_beam: int = int(os.getenv("WHISPER_BEAM", "5"))
 
+    # Sarvam AI (India): spoken-Tamil specialist, free signup credits.
+    sarvam_key: str = os.getenv("SARVAM_API_KEY", "").strip()
+    sarvam_model: str = os.getenv("SARVAM_MODEL", "saaras:v4").strip()
+
     # Groq (free tier: whisper + llama). Full large-v3 beats turbo in WER.
     groq_key: str = os.getenv("GROQ_API_KEY", "").strip()
     groq_model: str = os.getenv("GROQ_MODEL", "whisper-large-v3").strip()
@@ -68,7 +72,7 @@ class Settings:
 
     # Consensus
     weights: dict = field(default_factory=lambda: _weights(os.getenv(
-        "MODEL_WEIGHTS", "elevenlabs=1.25,groq=1.15,whisper_local=1.1,deepgram=1.0,assemblyai=1.0")))
+        "MODEL_WEIGHTS", "elevenlabs=1.25,sarvam=1.2,groq=1.15,whisper_local=1.1,deepgram=1.0,assemblyai=1.0")))
     window_seconds: float = float(os.getenv("CONSENSUS_WINDOW_SECONDS", "30"))
 
     # Speaker turns / Person 1 / Person 2

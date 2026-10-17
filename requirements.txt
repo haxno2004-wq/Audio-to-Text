@@ -3,8 +3,9 @@ uvicorn
 python-multipart
 httpx
 python-dotenv
-deepgram-sdk
-assemblyai
-groq
 rapidfuzz
 imageio-ffmpeg
+deepgram-sdk>=7,<8
+assemblyai
+groq
+faster-whisper
