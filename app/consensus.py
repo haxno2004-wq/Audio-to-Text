@@ -280,22 +280,39 @@ def _paragraphs(words: list[dict]) -> str:
 
 # --------------------------------------------------------------------------- speakers
 
-def _speaker_blocks(all_words: list[dict], results: list[ProviderResult]) -> list[dict] | None:
+def _speaker_blocks(all_words: list[dict], results: list[ProviderResult],
+                    weights: dict[str, float] | None = None) -> list[dict] | None:
     """Turn mixed-provider speaker hints into Person 1 / Person 2 dialogue.
 
-    Each consensus word takes a majority vote of the diarized turns that cover it,
-    then consecutive same-speaker words are merged into blocks like
+    Two tricks make two-person conversations much more stable than naive
+    majority voting:
+    1. Providers' diarization turns vote with the provider's consensus WEIGHT
+       (not flat), so a trusted model's speaker attribution dominates.
+    2. Each provider numbers speakers independently — '0' from one model can be
+       a different physical person than '0' from another. All providers' ids are
+       remapped into the id space of the highest-weight diarizing provider by
+       maximal temporal overlap, so the same person gets one vote, not two
+       cancelled halves.
+    Then consecutive same-speaker words are merged into blocks like
     {speaker: 1, start: .., end: .., text: "..."}. Returns None when no provider
     produced diarization, so the UI can hide the person view.
     """
-    turns: list[tuple[float, float, int, float]] = []   # start, end, raw speaker id, weight
-    raw_ids: set[int] = set()
-    for r in results:
-        for s, e, spk in r.turns or []:
-            turns.append((float(s), float(e), int(spk), 1.0))
-            raw_ids.add(int(spk))
-    if not turns:
+    weights = weights or {}
+    diarizers = [r for r in results if r.turns]
+    if not diarizers:
         return None
+    # The reference provider owns the canonical id space.
+    ref = max(diarizers, key=lambda r: weights.get(r.name, 1.0))
+
+    turns: list[tuple[float, float, int, float]] = []   # start, end, mapped speaker id, weight
+    for r in diarizers:
+        w = weights.get(r.name, 1.0)
+        for s, e, spk in r.turns:
+            spk = int(spk)
+            if r is not ref:
+                spk = _map_speaker_id(r, spk, ref)
+            turns.append((float(s), float(e), spk, w))
+    raw_ids: set[int] = set(t[2] for t in turns)
 
     def overlap(a0, a1, b0, b1):
         return max(0.0, min(a1, b1) - max(a0, b0))
@@ -316,6 +333,19 @@ def _speaker_blocks(all_words: list[dict], results: list[ProviderResult]) -> lis
             if near[0] < 1.5 or near[1] < 1.5:
                 tally[near[2]] = 0.5
         votes.append(max(tally, key=tally.get) if tally else None)
+
+    # Smoothing: drop flip-flops shorter than ~0.8 s — a single word of Person 2
+    # inside a Person 1 block is almost always a diarization flicker, not a real
+    # interjection, and it fragments the dialogue view.
+    for i, v in enumerate(votes):
+        if v is None:
+            continue
+        prev_v = next((votes[j] for j in range(i - 1, -1, -1) if votes[j] is not None), None)
+        next_v = next((votes[j] for j in range(i + 1, len(votes)) if votes[j] is not None), None)
+        w = all_words[i]
+        if prev_v is not None and prev_v == next_v and v != prev_v \
+                and (w["end"] - w["start"]) < 0.8:
+            votes[i] = prev_v
 
     # Renumber raw ids in order of first appearance -> Person 1..N
     order: list[int] = []
@@ -344,6 +374,31 @@ def _speaker_blocks(all_words: list[dict], results: list[ProviderResult]) -> lis
         b.pop("_parts", None)
         b["start"], b["end"] = round(b["start"], 2), round(b["end"], 2)
     return blocks or None
+
+
+def _map_speaker_id(source: ProviderResult, spk: int, ref: ProviderResult) -> int:
+    """Remap source's speaker id into ref's id space by maximal temporal overlap.
+
+    Falls back to a detached negative id when the source speaker has no overlap
+    with any ref turn (so foreign speakers can't collide with real ones)."""
+    best_ov, best_id = 0.0, None
+    for s, e, rspk in ref.turns:
+        ov = min(float(e), _spk_end(source, spk)) - max(float(s), _spk_start(source, spk))
+        if ov > best_ov:
+            best_ov, best_id = ov, rspk
+    if best_id is not None and best_ov > 0:
+        return best_id
+    return -((abs(hash((source.name, spk))) % 900) + 1)   # stable detached id
+
+
+def _spk_start(source: ProviderResult, spk: int) -> float:
+    return min(float(s) for s, e, k in source.turns if k == spk) if any(
+        k == spk for _, _, k in source.turns) else 0.0
+
+
+def _spk_end(source: ProviderResult, spk: int) -> float:
+    return max(float(e) for s, e, k in source.turns if k == spk) if any(
+        k == spk for _, _, k in source.turns) else 0.0
 
 
 def build_consensus(results: list[ProviderResult], weights: dict[str, float] | None = None,
@@ -419,5 +474,5 @@ def build_consensus(results: list[ProviderResult], weights: dict[str, float] | N
         "agreement": round(sum(w["agree"] for w in all_words) / denom, 4) if all_words else 0.0,
         "segments": segments,
         "model_agreement": model_agreement,
-        "speakers": _speaker_blocks(all_words, results),
+        "speakers": _speaker_blocks(all_words, results, weights),
     }
