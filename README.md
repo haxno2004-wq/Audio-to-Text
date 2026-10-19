@@ -54,6 +54,7 @@ browser ─▶ FastAPI (:8080) ─▶ SQLite job row + in-memory queue ─▶ wo
 | `WHISPER_ENABLED` | `1` runs faster-whisper locally (downloads the model on first job) |
 | `WHISPER_MODEL` | `large-v3` (best, slow on CPU) or `small` / `base` (much faster, less accurate) |
 | `MODEL_WEIGHTS` | e.g. `elevenlabs=1.25,sarvam=1.2,groq=1.15,deepgram=1` to trust a model more |
+| `CONSENSUS_FOLLOW_BEST` | `1` (default): the highest-weight model's language wins and other-language runs are excluded from the vote; `0` merges everything |
 | `MAX_UPLOAD_MB` | upload size limit (default 500) |
 
 Changes to `.env` apply after restarting. On Render, env changes take effect on the next deploy/restart.
