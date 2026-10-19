@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from rapidfuzz.distance import Levenshtein
 
+from .config import settings
 from .schema import ProviderResult, Word
 
 ALPHA = 0.7            # weight of vote share vs. confidence in the slot score
@@ -177,12 +178,32 @@ def _align(slots: list[Slot], toks: list[Tok]) -> list[Slot]:
     return out
 
 
-def _backbone(systems: dict[str, list[Tok]]) -> str:
-    names = list(systems)
+def _backbone(systems: dict[str, list[Tok]], weights: dict[str, float]) -> str:
+    """Pick the medoid system, weighted by how much we trust the systems it agrees with.
+
+    A plain Levenshtein medoid can crown a wrong-language runaway as the backbone
+    when two junk outputs happen to be closer to each other than to the one
+    correct transcript. Scoring each system by the WEIGHTED similarity to the
+    others means a system that matches a high-weight (trusted) model anchors the
+    merge, and junk that only matches other junk loses."""
+    names = [n for n in systems if systems[n]]
+    if not names:
+        names = list(systems)
     norms = {n: [t.norm for t in systems[n]] for n in names}
 
-    def mean_conf(n: str) -> float:
-        return sum(t.conf for t in systems[n]) / len(systems[n])
+    def sim(a: list[str], b: list[str]) -> float:
+        if not a or not b:
+            return 0.0
+        d = Levenshtein.distance(a, b)
+        return max(0.0, 1.0 - d / max(len(a), len(b), 1))
+
+    def score(n: str) -> tuple[float, float]:
+        agree = sum(weights[m] * sim(norms[n] or [], norms[m] or [])
+                    for m in names if m != n)
+        conf = (sum(t.conf for t in systems[n]) / len(systems[n])) if systems[n] else 0.0
+        return agree, conf
+
+    return max(names, key=score)
 
     totals = {n: sum(Levenshtein.distance(norms[n], norms[m]) for m in names if m != n) for n in names}
     return min(names, key=lambda n: (totals[n], -mean_conf(n)))
@@ -223,7 +244,7 @@ def _window_words(systems: dict[str, list[Tok]], weights: dict[str, float]) -> l
     active = {n: t for n, t in systems.items() if t}
     if not active:
         return []
-    base = _backbone(active)
+    base = _backbone(active, weights)
     slots = [Slot({base: t}) for t in active[base]]
     for name in sorted(n for n in active if n != base):
         slots = _align(slots, active[name])
@@ -330,6 +351,29 @@ def build_consensus(results: list[ProviderResult], weights: dict[str, float] | N
     if not results:
         raise ValueError("No transcripts to merge")
     weights = {r.name: (weights or {}).get(r.name, 1.0) for r in results}
+
+    # Follow-the-best-model language gate: the highest-weight provider decides
+    # the language of the final transcript. Providers that detected a DIFFERENT
+    # language are excluded from the merge (they stay in the per-model panel).
+    # This is what people casually call "took the best model as base": when the
+    # trusted Tamil models return Tamil, two junk Hindi runs can no longer
+    # outvote the trusted one word-by-word and drag Devanagari into the final.
+    if settings.consensus_follow_best:
+        best = max(results, key=lambda r: weights[r.name])
+        best_lang = _base_lang(best.language)
+        if best_lang and best_lang not in ("auto", "unknown", "multi"):
+            kept = [r for r in results
+                    if not _base_lang(r.language) or _base_lang(r.language) == best_lang]
+            dropped = [r.name for r in results if r not in kept]
+            if kept:
+                if dropped:
+                    import logging
+                    logging.getLogger(__name__).info(
+                        "Consensus: following %s (%s); dropping other-language runs: %s",
+                        best.name, best_lang, ",".join(dropped))
+                results = kept
+                weights = {r.name: weights[r.name] for r in results}
+
     systems = {r.name: _tokenize(r.name, r.words) for r in results}
 
     cuts = _cut_points(systems, window_seconds)

@@ -74,6 +74,10 @@ class Settings:
     weights: dict = field(default_factory=lambda: _weights(os.getenv(
         "MODEL_WEIGHTS", "elevenlabs=1.25,sarvam=1.2,groq=1.15,whisper_local=1.1,deepgram=1.0,assemblyai=1.0")))
     window_seconds: float = float(os.getenv("CONSENSUS_WINDOW_SECONDS", "30"))
+    # Follow-the-best-model: the highest-weight model's language becomes the
+    # final transcript's language and other-language runs are excluded from
+    # the vote (prevents two junk outputs from outvoting a trusted model).
+    consensus_follow_best: bool = os.getenv("CONSENSUS_FOLLOW_BEST", "1").strip().lower() in ("1", "true", "yes", "on")
 
     # Speaker turns / Person 1 / Person 2
     speaker_labels_enabled: bool = os.getenv("SPEAKER_LABELS", "1").strip().lower() in ("1", "true", "yes", "on")

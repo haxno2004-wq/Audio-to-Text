@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import time
 
@@ -7,6 +8,8 @@ from deepgram import DeepgramClient
 
 from app.schema import ProviderResult, Word
 from app.config import settings
+
+log = logging.getLogger(__name__)
 
 
 class Deepgram:
@@ -118,17 +121,34 @@ class Deepgram:
             progress_callback(0.75)
             text, detected, words, turns = self._extract(res)
         else:
-            # Auto: base model detects the language (broad coverage), then the
-            # better nova-3 model re-runs on the detected code when possible.
+            # Auto: the base model has NO Tamil, so its detection is worthless
+            # for Tamil audio (it guessed Hindi in production). nova-3 covers
+            # Tamil since 2026-01, so the FIRST run is nova-3 with 'ta'; the
+            # detect-languages base run happens only if the probe doesn't
+            # produce Tamil (i.e. the audio isn't Tamil after all).
             progress_callback(0.25)
-            res, elapsed = self._request(client, audio_path, settings.deepgram_base_model, "")
-            base_text, detected, base_words, base_turns = self._extract(res)
-            if not base_text.strip():
-                raise RuntimeError("returned an empty transcript")
+            log.info("Deepgram auto: probing nova-3 with language=ta first")
+            text, words, turns, detected, elapsed = "", [], [], "", 0.0
+            base_text, base_words, base_turns, base_detected, base_elapsed = "", [], [], "", 0.0
+            try:
+                res_ta, t_ta = self._request(client, audio_path, model, "ta")
+                text, detected, words, turns = self._extract(res_ta)
+                elapsed += t_ta
+            except Exception as e:
+                log.warning("Deepgram nova-3 'ta' probe failed: %s", str(e)[:200])
 
-            if settings.deepgram_detect_fallback and detected:
-                code = _base_code(detected)
-                if code:
+            tamil_ok = _script_count(text, self._TAMIL) >= max(3, len(text) // 5)
+            if not tamil_ok:
+                log.info("Deepgram 'ta' probe produced little Tamil (chars=%d); "
+                         "falling back to language detection", _script_count(text, self._TAMIL))
+                progress_callback(0.45)
+                res, t_b = self._request(client, audio_path, settings.deepgram_base_model, "")
+                base_text, base_detected, base_words, base_turns = self._extract(res)
+                base_elapsed += t_b
+                elapsed += t_b
+                # Re-run the better nova-3 model on the detected code when usable.
+                code = _base_code(base_detected)
+                if settings.deepgram_detect_fallback and code and code != "ta":
                     try:
                         progress_callback(0.6)
                         res2, _t = self._request(client, audio_path, model, code)
@@ -136,31 +156,15 @@ class Deepgram:
                         elapsed += _t
                         detected = code
                         text = text or base_text
-                    except Exception:
-                        # nova-3 may reject a rare language code; base result is usable.
+                    except Exception as e:
+                        log.warning("Deepgram nova-3 re-run on %s failed: %s", code, str(e)[:200])
                         text, words, turns = base_text, base_words, base_turns
+                        detected = base_detected
                 else:
                     text, words, turns = base_text, base_words, base_turns
+                    detected = base_detected
             else:
-                text, words, turns = base_text, base_words, base_turns
-
-            # Tamil guard: the base model has no Tamil, so for Tamil audio it
-            # misdetects an Indic language (typically Hindi). If the re-run came
-            # back Devanagari, probe nova-3 with 'ta' (supported since 2026-01)
-            # and keep whichever run actually produced Tamil script.
-            if (settings.deepgram_detect_fallback
-                    and _base_code(detected) in self._PROBE_TA
-                    and _script_count(text, self._DEVANAGARI) > 0):
-                try:
-                    progress_callback(0.8)
-                    res_ta, t_ta = self._request(client, audio_path, model, "ta")
-                    ta_text, ta_words, ta_turns = self._extract(res_ta)
-                    elapsed += t_ta
-                    if (_script_count(ta_text, self._TAMIL) > 0
-                            and _script_count(ta_text, self._TAMIL) >= _script_count(text, self._TAMIL)):
-                        text, words, turns, detected = ta_text, ta_words, ta_turns, "ta"
-                except Exception:
-                    pass          # keep the decoded run; consensus will cross-check it
+                log.info("Deepgram auto: nova-3 'ta' probe produced Tamil; keeping it")
 
         if not text.strip():
             raise RuntimeError("returned an empty transcript")

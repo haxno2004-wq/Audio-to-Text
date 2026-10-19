@@ -125,21 +125,32 @@ class Sarvam:
         return job_id
 
     def _job_upload(self, job_id: str, path: Path) -> None:
-        buf = path.read_bytes()
+        """Upload via the documented presigned-URL flow:
+        POST /speech-to-text/job/v1/upload-files {job_id, files:[name]}
+        -> upload_urls[name].file_url, then PUT the bytes to that URL."""
+        name = path.name
         r = httpx.post(
-            f"{_API}/speech-to-text/job/v1/{job_id}/data-upload",
-            headers=_auth_headers(),
-            files={"file": (path.name, buf, "audio/x-flac")},
+            f"{_API}/speech-to-text/job/v1/upload-files",
+            headers=_auth_headers(), json={"job_id": job_id, "files": [name]},
             timeout=http_timeout(),
         )
-        if r.status_code == 404:        # some API revisions renamed the upload route
-            r = httpx.post(
-                f"{_API}/speech-to-text/job/v1/{job_id}/upload",
-                headers=_auth_headers(),
-                files={"file": (path.name, buf, "audio/x-flac")},
-                timeout=http_timeout(),
-            )
         r.raise_for_status()
+        body = r.json()
+        urls = body.get("upload_urls") or {}
+        entry = urls.get(name) if isinstance(urls, dict) else None
+        file_url = (entry or {}).get("file_url") if isinstance(entry, dict) else (entry or None)
+        if not file_url:
+            # tolerate a flat list shape [{file_name, file_url}, ...]
+            for it in urls if isinstance(urls, list) else []:
+                if isinstance(it, dict) and (it.get("file_name") or it.get("name")) == name:
+                    file_url = it.get("file_url")
+                    break
+        if not file_url:
+            raise RuntimeError(f"batch upload response had no presigned URL: {str(body)[:200]}")
+        put = httpx.put(file_url, content=path.read_bytes(),
+                        headers={"Content-Type": "application/octet-stream"},
+                        timeout=http_timeout())
+        put.raise_for_status()
 
     def _job_start(self, job_id: str) -> None:
         r = httpx.post(f"{_API}/speech-to-text/job/v1/{job_id}/start",
@@ -156,15 +167,50 @@ class Sarvam:
         return state, body
 
     def _job_fetch_transcript(self, job_id: str) -> tuple[str, list[Word], list[tuple[float, float, int]]]:
-        """Fetch the finished batch job's transcript + words + speaker turns."""
-        r = httpx.post(f"{_API}/speech-to-text/job/v1/{job_id}/get-transcript",
-                       headers=_auth_headers(), timeout=http_timeout())
-        if r.status_code == 404:        # older deployments only expose download-files
-            r = httpx.post(f"{_API}/speech-to-text/job/v1/download-files",
-                           headers=_auth_headers(), json={"job_id": job_id},
-                           timeout=http_timeout())
+        """Fetch the finished batch job's transcript + words + speaker turns.
+
+        Documented flow: GET status -> job_details[].outputs[].file_name;
+        POST /download-files {job_id, files:[names]} -> download_urls[name].file_url;
+        GET that URL -> the transcript JSON parsed by _parse_batch()."""
+        _state, body = self._job_status(job_id)
+        details = body.get("job_details") or (body.get("job") or {})
+        names: list[str] = []
+        if isinstance(details, list):                     # one entry per uploaded file
+            for d in details:
+                for o in d.get("outputs") or []:
+                    fn = o.get("file_name") or o.get("name")
+                    if fn:
+                        names.append(str(fn))
+        elif isinstance(details, dict):
+            for o in details.get("outputs") or []:
+                fn = o.get("file_name") or o.get("name")
+                if fn:
+                    names.append(str(fn))
+        if not names:
+            names = ["0.json"]                            # single-file default
+
+        r = httpx.post(f"{_API}/speech-to-text/job/v1/download-files",
+                       headers=_auth_headers(), json={"job_id": job_id, "files": names},
+                       timeout=http_timeout())
         r.raise_for_status()
-        return _parse_batch(r.json())
+        dbody = r.json()
+        durls = dbody.get("download_urls") or {}
+
+        last_err: Exception | None = None
+        for key in names + [k for k in durls if isinstance(durls, dict) and k not in names]:
+            entry = durls.get(key) if isinstance(durls, dict) else None
+            url = (entry or {}).get("file_url") if isinstance(entry, dict) else (entry or None)
+            if not url:
+                continue
+            got = httpx.get(url, timeout=http_timeout())
+            got.raise_for_status()
+            try:
+                return _parse_batch(got.json())
+            except RuntimeError as e:
+                last_err = e
+        if last_err:
+            raise last_err
+        raise RuntimeError(f"no downloadable batch output: {str(dbody)[:200]}")
 
     # ------------------------------------------------------------- REST chunk mode
 
@@ -199,7 +245,7 @@ class Sarvam:
         except (httpx.HTTPStatusError, httpx.TransportError, RuntimeError) as e:
             # The batch flow is primary; on unavailable endpoints/tier/revisions,
             # fall back to 28 s chunked REST so the model still contributes.
-            log.warning("Sarvam batch flow unavailable (%s); falling back to chunked REST", str(e)[:200])
+            log.warning("Sarvam batch flow unavailable (%s); falling back to chunked REST", str(e)[:240])
 
         # ------- chunked REST fallback ------- #
         chunks = _segments(path, 28, path.parent / "sarvam_chunks")
