@@ -1,0 +1,39 @@
+# Render Blueprint — one free web service, SQLite on a persistent disk.
+#
+# Deploy: GitHub -> "New +" -> Blueprint -> pick this repo. Then set the API
+# keys you have under Environment (any key left blank simply drops that model:
+# Sarvam, ElevenLabs, Deepgram, Groq, AssemblyAI).
+#
+# Why imageio-ffmpeg in the build: Render's image has no system ffmpeg; the
+# Python wheel ships a working binary used by app/audio.py and the providers.
+
+services:
+  - type: web
+    name: audio-to-text
+    runtime: python
+    plan: free
+    region: singapore            # closest free region to India
+# The committed static/ folder already holds the built React UI, so the
+# build step only needs Python deps (+ the bundled ffmpeg binary).
+    buildCommand: pip install -r requirements.txt imageio-ffmpeg
+    startCommand: python run.py
+    healthCheckPath: /api/providers
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: DATA_DIR
+        value: /var/data          # SQLite + uploads survive restarts on the disk
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1

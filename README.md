@@ -58,12 +58,28 @@ browser ─▶ FastAPI (:8080) ─▶ SQLite job row + in-memory queue ─▶ wo
 
 Changes to `.env` apply after restarting. On Render, env changes take effect on the next deploy/restart.
 
+## Free hosting (Render Blueprint)
+
+1. Push to GitHub, then on render.com choose **New + → Blueprint** and pick this repo
+   (the included [render.yaml](render.yaml) defines a free web service + 1 GB disk).
+2. Under **Environment**, add the API keys you have (`SARVAM_API_KEY`,
+   `ELEVENLABS_API_KEY`, `DEEPGRAM_API_KEY`, `GROQ_API_KEY`, `ASSEMBLYAI_API_KEY`), then **Apply**.
+3. The app binds to `0.0.0.0` automatically on Render (`run.py` reads `RENDER`),
+   uploads/jobs live on the persistent disk at `/var/data`.
+
+Free-plan notes: the service sleeps after ~15 min idle (first request wakes it),
+and free instances give ~512 MB RAM — keep `WHISPER_ENABLED=0` there and let the
+cloud models do the work (they run in parallel regardless).
+
 ### Free-tier notes (October 2026)
-- **Deepgram**: new accounts get **$200 credit**, no card — the previous "Deepgram failed"
-  was `language=multi` (not valid for Tamil): auto-detect now runs the base model first
-  and re-runs nova-3 on the detected language.
-- **Sarvam AI**: free signup credits (≈200 min). The REST endpoint takes ≤30 s per file;
-  the provider chunks audio automatically.
+- **Sarvam AI**: free signup credits (≈200 min). The provider now uses the
+  **Batch API** (`/speech-to-text/job/v1`, up to 2 h per file, with diarization)
+  so the old 30-second REST cap no longer fails long recordings; it falls back
+  to chunked REST only if the batch endpoints reject the account.
+- **Deepgram**: new accounts get **$200 credit**, no card. nova-3 covers Tamil
+  (`language=ta`); when auto-detect's base-model run comes back in Devanagari
+  (the old "Deepgram only gives Hindi" bug), the provider re-probes nova-3 with
+  `ta` and keeps whichever run produced Tamil script.
 - **ElevenLabs Scribe**: free plan shares 10,000 credits → ≈30 min of STT per month.
 - **AssemblyAI**: $50 free credit; its own rating for Tamil is only "moderate" on universal-2.
 
