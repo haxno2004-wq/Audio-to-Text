@@ -15,14 +15,26 @@ class Deepgram:
     - The recurring "Deepgram failed" had two causes: the BASE model does not
       cover Tamil, and language='multi' is only documented for nova-3's
       code-switching set (en, es, fr, de, hi, ru, pt, ja, it, nl) — NOT Tamil.
-      So: a language hint goes straight to nova-3 with that code; auto-detection
-      runs base with detect_language=True first, and if the detected language is
-      nova-3-capable we re-run nova-3 on it for the better transcript.
+    - And the recurring "Deepgram only gives Hindi" had one cause: in auto mode
+      the base model (no Tamil support) detected the language first and guessed
+      Hindi (Devanagari) for Tamil audio. Fix: nova-3 now covers Tamil (added
+      Jan 2026), so auto mode ALSO probes nova-3 with language='ta' whenever the
+      detected transcript comes back in Devanagari, and keeps whichever run
+      actually produced Tamil script. A language hint always wins directly.
     - Deepgram returns times in milliseconds; this provider converts to seconds.
     """
 
     # Languages documented for nova-3 code-switching ('multi') at the time of writing.
     _MULTI_SET = {"en", "es", "fr", "de", "hi", "ru", "pt", "ja", "it", "nl"}
+
+    # Unicode blocks used to sanity-check which script a run actually produced.
+    _TAMIL = (0x0B80, 0x0BFF)
+    _DEVANAGARI = (0x0900, 0x097F)
+
+    # Indic languages the base model tends to guess for Tamil audio.
+    # (nova-3 supports Tamil directly — 'ta' probe converts a bad guess result
+    # back into Tamil instead of leaving Hindi text in the comparison panel.)
+    _PROBE_TA = {"hi", "mr", "ne", "sa"}
 
     def __init__(self):
         self.name = "deepgram"
@@ -132,6 +144,24 @@ class Deepgram:
             else:
                 text, words, turns = base_text, base_words, base_turns
 
+            # Tamil guard: the base model has no Tamil, so for Tamil audio it
+            # misdetects an Indic language (typically Hindi). If the re-run came
+            # back Devanagari, probe nova-3 with 'ta' (supported since 2026-01)
+            # and keep whichever run actually produced Tamil script.
+            if (settings.deepgram_detect_fallback
+                    and _base_code(detected) in self._PROBE_TA
+                    and _script_count(text, self._DEVANAGARI) > 0):
+                try:
+                    progress_callback(0.8)
+                    res_ta, t_ta = self._request(client, audio_path, model, "ta")
+                    ta_text, ta_words, ta_turns = self._extract(res_ta)
+                    elapsed += t_ta
+                    if (_script_count(ta_text, self._TAMIL) > 0
+                            and _script_count(ta_text, self._TAMIL) >= _script_count(text, self._TAMIL)):
+                        text, words, turns, detected = ta_text, ta_words, ta_turns, "ta"
+                except Exception:
+                    pass          # keep the decoded run; consensus will cross-check it
+
         if not text.strip():
             raise RuntimeError("returned an empty transcript")
 
@@ -146,6 +176,12 @@ class Deepgram:
             elapsed=elapsed,
             turns=turns,
         )
+
+
+def _script_count(text: str, block: tuple[int, int]) -> int:
+    """How many characters of `text` fall inside a Unicode block (start, end)."""
+    lo, hi = block
+    return sum(1 for ch in text if lo <= ord(ch) <= hi)
 
 
 def _base_code(code: str | None) -> str | None:
