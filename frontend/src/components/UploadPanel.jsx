@@ -11,8 +11,9 @@ export default function UploadPanel({ onFile }) {
   const input = useRef(null)
   const [drag, setDrag] = useState(false)
   const [language, setLanguage] = useState('')
+  const [mode, setMode] = useState('full')
 
-  const take = (files) => { if (files && files[0]) onFile(files[0], language) }
+  const take = (files) => { if (files && files[0]) onFile(files[0], language, mode) }
 
   return (
     <section>
@@ -31,13 +32,23 @@ export default function UploadPanel({ onFile }) {
         <input ref={input} type="file" hidden accept="audio/*,video/*,.m4a,.flac,.opus,.amr,.wma" onChange={(e) => take(e.target.files)} />
       </div>
 
-      <label className="field">
-        <span>Language</span>
-        <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-          {LANGS.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-        </select>
-        <span className="hint">Leave on automatic unless detection keeps getting it wrong.</span>
-      </label>
+      <div className="field row">
+        <label className="field">
+          <span>Language</span>
+          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+            {LANGS.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
+          <span className="hint">Leave on automatic unless detection keeps getting it wrong.</span>
+        </label>
+        <label className="field">
+          <span>Accuracy mode</span>
+          <select value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="full">Maximum accuracy — every model votes</option>
+            <option value="budget">Budget — 2 models, lower cost</option>
+          </select>
+          <span className="hint">Budget mode still anchors on the two strongest Tamil models.</span>
+        </label>
+      </div>
     </section>
   )
 }

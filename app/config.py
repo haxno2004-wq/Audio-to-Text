@@ -85,11 +85,48 @@ class Settings:
     # AI polish passes max ~2000 characters per chunk.
     polish_chunk_chars: int = int(os.getenv("POLISH_CHUNK_CHARS", "2000"))
 
+    # ------------------------------------------------------------------ billing
+    # Accounts + prepaid credits are opt-in: enable with BILLING_ENABLED=1 when
+    # you deploy publicly (leave 0 for local/self-hosted use, which stays open).
+    billing_enabled: bool = os.getenv("BILLING_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+    free_minutes: float = float(os.getenv("FREE_MINUTES", "30"))          # signup grant
+    razorpay_key_id: str = os.getenv("RAZORPAY_KEY_ID", "").strip()
+    razorpay_key_secret: str = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+    razorpay_webhook_secret: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip()
+    # Bundles: name|minutes|price-in-paise, comma separated.
+    credit_bundles_raw: str = os.getenv(
+        "CREDIT_BUNDLES",
+        "starter|60|9900, standard|300|39900, pro|900|99900",
+    ).strip()
+
+    # ------------------------------------------------------------------ modes
+    # "full" runs every enabled model (top accuracy); "budget" runs only the
+    # cost-efficient pair (Sarvam + ElevenLabs Scribe) for cheaper paid tiers.
+    default_mode: str = os.getenv("DEFAULT_MODE", "full").strip().lower()
+    budget_providers: tuple[str, ...] = _list("BUDGET_PROVIDERS", "sarvam,elevenlabs")
+
     def upload_dir(self, job_id: str) -> Path:
         return self.data_dir / "uploads" / job_id
 
     def work_dir(self, job_id: str) -> Path:
         return self.data_dir / "work" / job_id
+
+    @property
+    def credit_bundles(self) -> list[dict]:
+        """Parse CREDIT_BUNDLES into [{name, minutes, amount_paise, label}]."""
+        out = []
+        for part in self.credit_bundles_raw.split(","):
+            bits = [b.strip() for b in part.split("|")]
+            if len(bits) != 3:
+                continue
+            name, minutes, paise = bits
+            try:
+                m, a = float(minutes), int(paise)
+            except ValueError:
+                continue
+            label = f"{m:g} min" if m < 60 else (f"{int(m // 60)} hr" if m % 60 == 0 else f"{m:g} min")
+            out.append({"name": name, "minutes": m, "amount_paise": a, "label": label})
+        return out
 
 
 settings = Settings()

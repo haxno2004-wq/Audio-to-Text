@@ -95,6 +95,30 @@ can't be loaded, the app falls back to CPU by itself.
 The built UI is in `static/`. To change it: `cd frontend`, `npm install`, `npm run dev`
 (live reload on :5173, needs the app running), then `npm run build` to update `static/`.
 
+## Going public (paying users)
+
+Billing is **off by default** so self-hosted/local use stays open. To sell access:
+
+1. Set in `.env` (or Render Environment):
+   - `BILLING_ENABLED=1` — turns on accounts and the pricing page
+   - `FREE_MINUTES=30` — welcome grant for new signups
+   - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` — from the Razorpay dashboard (test keys first!)
+   - `RAZORPAY_WEBHOOK_SECRET` — set in Razorpay → Settings → Webhooks
+     (point the webhook at `https://your-site/api/billing/webhook`, subscribe to `payment.captured`)
+   - `CREDIT_BUNDLES=starter|60|9900, standard|300|39900, pro|900|99900`
+     (name|minutes|price in paise)
+2. Signing up grants the free minutes; buying a bundle opens Razorpay Checkout
+   (UPI/cards) and credits land automatically — via the browser-verified signature
+   or the webhook, whichever arrives first, exactly once per order.
+3. Credits are **minutes**: successful transcriptions charge `duration + 1 s`;
+   failed jobs charge nothing; hitting 0 cents (402) blocks new uploads until top-up.
+
+### Accuracy modes
+- **full** (default): every enabled model votes (maximum accuracy, ~₹60–90/hr API cost).
+- **budget**: only `BUDGET_PROVIDERS` (default Sarvam + ElevenLabs Scribe) run —
+  still anchored by the two strongest Tamil models, roughly half the cost.
+  Offer this on cheaper tiers. Users pick per upload; `DEFAULT_MODE` sets the default.
+
 ## Tests
 `.\.venv\Scripts\python.exe -m pip install pytest` then `.\.venv\Scripts\python.exe -m pytest tests`
 

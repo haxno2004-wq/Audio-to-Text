@@ -11,7 +11,7 @@ import queue
 import shutil
 import threading
 
-from . import audio, db
+from . import accounts, audio, db
 from .config import settings
 from .consensus import build_consensus
 from .polish import polish
@@ -51,6 +51,8 @@ def run_job(job_id: str) -> None:
     job = db.get_job(job_id)
     if not job or job["status"] == "done":
         return
+    user_id = job.get("user_id") if accounts.enabled() else None
+    mode = job.get("mode") or None
     work = settings.work_dir(job_id)
     try:
         db.update_job(job_id, status="processing", stage="Preparing audio", progress=0.02)
@@ -61,7 +63,7 @@ def run_job(job_id: str) -> None:
         db.update_job(job_id, duration=duration, stage="Transcribing", progress=0.06)
 
         results, errors = run_all(
-            norm, duration, job["language_hint"],
+            norm, duration, job["language_hint"], mode=mode,
             sink=lambda p: db.update_job(job_id, progress=round(0.06 + 0.84 * p, 3)),
         )
         if not results:
@@ -75,6 +77,13 @@ def run_job(job_id: str) -> None:
         polished = polish(merged["text"])
         if polished:
             db.update_job(job_id, polished_text=polished, stage="Polished")
+
+        # Charge credits only after a successful transcript (never for failures).
+        if user_id:
+            minutes = max(1.0, duration / 60.0)
+            new_bal = accounts.deduct_minutes(user_id, minutes, f"job {job_id}")
+            log.info("Deducted %.1f min from %s for job %s -> %.2f left",
+                     minutes, user_id, job_id, new_bal)
 
         payload = {
             "final": {"text": merged["text"], "language": merged["language"],

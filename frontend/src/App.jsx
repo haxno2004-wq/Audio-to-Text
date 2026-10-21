@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { clearHistory, deleteJob, getJob, listJobs, uploadAudio } from './api'
+import Account from './components/Account.jsx'
+import Pricing from './components/Pricing.jsx'
 import History from './components/History.jsx'
 import UploadPanel from './components/UploadPanel.jsx'
 import Progress from './components/Progress.jsx'
@@ -11,6 +13,7 @@ export default function App() {
   const [job, setJob] = useState(null)
   const [upload, setUpload] = useState(null) // { name, pct } while the file is going up
   const [error, setError] = useState('')
+  const [user, setUser] = useState(null)
 
   const refresh = useCallback(() => listJobs().then(setJobs).catch(() => {}), [])
   useEffect(() => { refresh() }, [refresh])
@@ -33,11 +36,11 @@ export default function App() {
     return () => { stop = true; clearTimeout(timer) }
   }, [activeId, refresh])
 
-  const onFile = async (file, language) => {
+  const onFile = async (file, language, mode) => {
     setError('')
     setUpload({ name: file.name, pct: 0 })
     try {
-      const { id } = await uploadAudio(file, language, (pct) => setUpload({ name: file.name, pct }))
+      const { id } = await uploadAudio(file, language, mode, (pct) => setUpload({ name: file.name, pct }))
       setUpload(null)
       setActiveId(id)
       refresh()
@@ -78,10 +81,18 @@ export default function App() {
 
   return (
     <div className="shell">
+      <header className="topbar">
+        <a className="brand" href="/">CallTranscript</a>
+        <nav>
+          <a href="/#pricing">Pricing</a>
+        </nav>
+        <Account onUser={setUser} />
+      </header>
       <History jobs={jobs} activeId={activeId} onSelect={setActiveId} onNew={() => setActiveId(null)} onDelete={onDelete} onClearAll={onClearAll} />
       <main className="main">
         {error && <p className="error" role="alert">{error}</p>}
         {main}
+        <Pricing user={user} onUser={setUser} />
       </main>
     </div>
   )

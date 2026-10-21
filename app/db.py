@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS jobs (
   updated_at    REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at DESC);
+CREATE TABLE IF NOT EXISTS job_meta (
+  job_id TEXT PRIMARY KEY REFERENCES jobs(id),
+  user_id TEXT,
+  mode TEXT
+);
 """
 
 _UPDATABLE = {"status", "stage", "progress", "language", "duration", "final_text", "result_json", "polished_text", "error"}
@@ -53,13 +58,17 @@ def init_db() -> None:
             c.execute("ALTER TABLE jobs ADD COLUMN polished_text TEXT")
 
 
-def create_job(job_id: str, filename: str, language_hint: str | None) -> None:
+def create_job(job_id: str, filename: str, language_hint: str | None,
+               user_id: str | None = None, mode: str | None = None) -> None:
     now = time.time()
     with conn() as c:
         c.execute(
             "INSERT INTO jobs (id, filename, language_hint, created_at, updated_at) VALUES (?,?,?,?,?)",
             (job_id, filename, language_hint, now, now),
         )
+        if user_id or mode:
+            c.execute("INSERT INTO job_meta (job_id, user_id, mode) VALUES (?,?,?)",
+                      (job_id, user_id, mode))
 
 
 def update_job(job_id: str, **fields) -> None:
@@ -80,6 +89,10 @@ def get_job(job_id: str) -> dict | None:
     job = dict(row)
     raw = job.pop("result_json", None)
     job["result"] = json.loads(raw) if raw else None
+    with conn() as c:
+        meta = c.execute("SELECT user_id, mode FROM job_meta WHERE job_id=?", (job_id,)).fetchone()
+    job["user_id"] = meta["user_id"] if meta else None
+    job["mode"] = meta["mode"] if meta else None
     return job
 
 
@@ -95,6 +108,7 @@ def list_jobs(limit: int = 100) -> list[dict]:
 
 def delete_job(job_id: str) -> None:
     with conn() as c:
+        c.execute("DELETE FROM job_meta WHERE job_id=?", (job_id,))
         c.execute("DELETE FROM jobs WHERE id=?", (job_id,))
 
 
@@ -109,8 +123,12 @@ def delete_all_jobs(skip_running: bool = True) -> list[str]:
             rows = c.execute("SELECT id FROM jobs").fetchall()
         ids = [r["id"] for r in rows]
         if skip_running:
-            c.execute("DELETE FROM jobs WHERE id IN (%s)" % ",".join("?" * len(ids)), ids) if ids else None
+            if ids:
+                marks = ",".join("?" * len(ids))
+                c.execute(f"DELETE FROM job_meta WHERE job_id IN ({marks})", ids)
+                c.execute(f"DELETE FROM jobs WHERE id IN ({marks})", ids)
         else:
+            c.execute("DELETE FROM job_meta")
             c.execute("DELETE FROM jobs")
     return ids
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from .providers import enabled_providers
+from .config import settings
 from .schema import ProviderResult
 
 log = logging.getLogger(__name__)
@@ -34,8 +35,13 @@ class _Progress:
 
 
 def run_all(audio: Path, duration: float, language: str | None,
-            sink: Callable[[float], None]) -> tuple[list[ProviderResult], list[dict]]:
+            sink: Callable[[float], None], mode: str | None = None) -> tuple[list[ProviderResult], list[dict]]:
     providers = enabled_providers()
+    if mode == "budget":
+        allowed = set(settings.budget_providers)
+        filtered = [p for p in providers if p.name in allowed]
+        if filtered:                      # fall back to all when the pair is unconfigured
+            providers = filtered
     if not providers:
         raise RuntimeError("No transcription providers are enabled. Check your .env file.")
     tracker = _Progress([p.name for p in providers], sink)

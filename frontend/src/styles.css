@@ -1,8 +1,5 @@
-/* Design tokens
-   ground: near-black blue page; glass: frosted panels; ink: ice white;
-   accent: aqua→violet gradient for actions; flag: warm amber for disputed words. */
-:root {
-  --ground: #0B0F1A;
+/* Design tokens   ground: near-black blue page; glass: frosted panels; ink: ice white;   accent: aqua→violet gradient for actions; flag: warm amber for disputed words. */
+:root {  --ground: #0B0F1A;
   --ground-2: #101628;
   --glass: rgba(255, 255, 255, 0.055);
   --glass-strong: rgba(255, 255, 255, 0.09);
@@ -23,12 +20,11 @@
   --p2: #8B7CF6;
   --p3: #F08FB5;
   --p4: #63B3ED;
-  --radius: 16px;
-  --sans: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --radius: 16px;  --sans: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; }
 html { color-scheme: dark; }
 body {
   margin: 0;
@@ -223,7 +219,31 @@ h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.12; font-weight: 600; let
   .col { padding: 14px 0; border-left: 0; border-top: 1px solid var(--line); }
   .col:first-child { border-top: 0; }
   .turn { max-width: 100%; }
-}
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; animation: none !important; }
-}
+}@media (prefers-reduced-motion: reduce) {  * { transition: none !important; animation: none !important; }}
+
+/* ---------------------------------------------------------------- billing UI */
+.topbar {  grid-column: 1 / -1;  display: flex; align-items: center; gap: 22px;  padding: 14px clamp(18px, 4vw, 44px);  background: var(--glass); border-bottom: 1px solid var(--line-soft);  backdrop-filter: blur(18px);}
+.topbar .brand { margin: 0; }
+.topbar nav { display: flex; gap: 16px; margin-right: auto; }
+.topbar nav a { color: var(--ink-2); text-decoration: none; font-weight: 500; }
+.topbar nav a:hover { color: var(--ink); }
+.account { margin-left: auto; }
+.account-card {  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);  padding: 18px; display: grid; gap: 10px; min-width: 300px; max-width: 340px;
+}
+.account-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.account-email { overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.account-card input {  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--ground-2); color: var(--ink);}
+.account-tabs { display: flex; gap: 6px; }
+.account-tabs .tab {  flex: 1; background: var(--glass-strong); border: 1px solid var(--line); border-radius: 999px;  padding: 6px 0; cursor: pointer; color: var(--ink-2); font-weight: 500;}
+.account-tabs .tab.on { background: var(--wash); color: var(--ink); }
+.ledger summary { cursor: pointer; color: var(--ink-2); font-size: 13.5px; }
+.ledger ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.ledger .kind { display: inline-block; min-width: 52px; color: var(--ink-3); }
+.ledger .kind.topup { color: var(--accent); }
+.pricing { margin-top: 60px; }
+.pricing h2 { font-size: clamp(24px, 3vw, 32px); }
+.bundles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 22px; }
+.bundle {  background: var(--glass); border: 1px solid var(--line); border-radius: var(--radius);  padding: 22px; display: grid; gap: 8px; justify-items: start; align-content: start;}
+.bundle .price { font-size: 28px; font-weight: 600; }
+.field.row { display: flex; gap: 24px; flex-wrap: wrap; }
+.field.row .field { margin-top: 0; flex: 1 1 260px; }
