@@ -119,6 +119,25 @@ Billing is **off by default** so self-hosted/local use stays open. To sell acces
   still anchored by the two strongest Tamil models, roughly half the cost.
   Offer this on cheaper tiers. Users pick per upload; `DEFAULT_MODE` sets the default.
 
+### Ads (passive earning)
+
+Like competitor sites (Sonix shows an ad below shared transcripts), you can earn
+passively from free-tier visitors with display ads — **off by default**:
+
+1. Apply to [Google AdSense](https://adsense.google.com) with useful public content on the
+   site (a FAQ/info page around the tool helps approval; reviews take days to ~2 weeks).
+2. Set in `.env`: `ADSENSE_CLIENT=ca-pub-XXXXXXXX`.
+3. Optional: `ADS_TXT=google.com, pub-XXXXXXXX, DIRECT, f08c47fec0942fa0` (served at `/ads.txt`).
+4. Create two display ad units in AdSense and put their slot ids at build time into
+   `frontend/.env`: `VITE_AD_SLOT_FOOTER=1234567890` and `VITE_AD_SLOT_PRICING=9876543210`.
+   Rebuild (`npm run build`).
+
+Placements (deliberately policy-safe): below the finished transcript's model panel and
+under the pricing section. Never inside transcript text or on account screens.
+No ads render at all without `ADSENSE_CLIENT`, so self-hosted stays ad-free.
+Reality check: small tools earn roughly $1–5 per 1,000 pageviews — worth having,
+not a substitute for credit sales.
+
 ## Tests
 `.\.venv\Scripts\python.exe -m pip install pytest` then `.\.venv\Scripts\python.exe -m pytest tests`
 

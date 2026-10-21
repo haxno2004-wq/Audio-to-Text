@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AdSlot from './AdSlot.jsx'
 import ModelsPanel from './ModelsPanel.jsx'
 
 const NO_SPACE = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff\u3000-\u303f\uff00-\uffef]/
@@ -124,6 +125,7 @@ export default function Transcript({ job }) {
       {view === 'people' && speakers && <People speakers={speakers} />}
 
       <ModelsPanel models={models} failed={failed} />
+      <AdSlot slot={import.meta.env.VITE_AD_SLOT_FOOTER} className="after-results" />
     </section>
   )
 }

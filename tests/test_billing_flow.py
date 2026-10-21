@@ -122,6 +122,25 @@ def test_budget_mode_filters_providers():
         orch.enabled_providers = real
 
 
+def test_ads_off_by_default_and_ads_txt():
+    """No ADSENSE_CLIENT -> /api/ads/config disabled + /ads.txt 404.
+    ADS_TXT configured -> the exact body is served at the domain root."""
+    from fastapi.testclient import TestClient
+    import app.main as m
+    with TestClient(m.app) as c:
+        r = c.get("/api/ads/config")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["enabled"] is False, "no client id configured in tests"
+        assert c.get("/ads.txt").status_code == 404
+
+    if not m.settings.ads_txt:   # only when a value is provided via env
+        return
+    with TestClient(m.app) as c:
+        r = c.get("/ads.txt")
+        assert r.status_code == 200 and m.settings.ads_txt in r.text
+
+
 def test_webhook_signature_enforced():
     accounts.init_db()
     body = json.dumps({"event": "payment.captured"}).encode()

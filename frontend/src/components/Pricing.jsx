@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { billingConfig, createOrder, getToken, payWithRazorpay, verifyPayment } from '../api'
+import AdSlot from './AdSlot.jsx'
 
 const INR = (paise) => `₹${(paise / 100).toLocaleString('en-IN')}`
 
@@ -49,6 +50,7 @@ export default function Pricing({ user, onUser }) {
         ))}
       </div>
       {error && <p className="error" role="alert">{error}</p>}
+      <AdSlot slot={import.meta.env.VITE_AD_SLOT_PRICING} className="under-pricing" />
     </section>
   )
 }

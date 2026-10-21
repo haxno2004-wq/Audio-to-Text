@@ -34,6 +34,21 @@ def providers():
     return provider_status()
 
 
+@app.get("/api/ads/config")
+def ads_config():
+    """Ad presence flag for the SPA (never exposes keys; the script itself
+    loads from Google only when a client id is configured)."""
+    return {"enabled": bool(settings.adsense_client), "client": settings.adsense_client or None}
+
+
+@app.get("/ads.txt", response_class=PlainTextResponse)
+def ads_txt():
+    """Serve ads.txt at the domain root when configured (AdSense recommends it)."""
+    if not settings.ads_txt:
+        raise HTTPException(404, "ads.txt not configured")
+    return PlainTextResponse(settings.ads_txt)
+
+
 @app.post("/api/jobs", status_code=202)
 async def create_job(file: UploadFile = File(...), language: str = Form(""),
                      mode: str = Form(""), authorization: str = Header("")):

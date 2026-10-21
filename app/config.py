@@ -105,6 +105,13 @@ class Settings:
     default_mode: str = os.getenv("DEFAULT_MODE", "full").strip().lower()
     budget_providers: tuple[str, ...] = _list("BUDGET_PROVIDERS", "sarvam,elevenlabs")
 
+    # ------------------------------------------------------------------ ads
+    # Passive revenue like the big transcription sites: set ADSENSE_CLIENT to
+    # your ca-pub-xxxx id and ad slots appear on non-private pages. Leave blank
+    # to show no ads. ADS_TXT is the ads.txt body AdSense gives you.
+    adsense_client: str = os.getenv("ADSENSE_CLIENT", "").strip()
+    ads_txt: str = os.getenv("ADS_TXT", "").strip().replace("\\n", "\n")
+
     def upload_dir(self, job_id: str) -> Path:
         return self.data_dir / "uploads" / job_id
 
