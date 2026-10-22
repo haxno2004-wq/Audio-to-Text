@@ -8,7 +8,7 @@ import { billingConfig } from '../api'
 
 export const INFO_SECTIONS = ['faq', 'privacy', 'terms']
 
-const CONTACT_EMAIL = 'support@yourdomain.example'   // change after you deploy
+const CONTACT_EMAIL = 'haxno2004@gmail.com'
 const SITE = 'CallTranscript'
 
 function Faq() {
@@ -65,7 +65,7 @@ function Privacy() {
         <h3>Third parties we process your data with</h3>
         <p>Your audio is sent to the speech-to-text providers you see in the model list (for example Sarvam AI, ElevenLabs, Groq, Deepgram, AssemblyAI). Each provider processes the audio to return text — their data policies apply to that processing step. The tasks are one-off and we do not retain copies on our side after a job is done.</p>
         <p>When you buy credits your payment is processed by Razorpay or Stripe. {SITE} never sees or stores your full card details.</p>
-        <p>Advertising: if you see ads on the site, they come from Google AdSense and are served entirely by Google acting as its own controller for that data. Ads are never shown inside your transcripts or account screens.</p>
+        <p>Advertising: if you see ads on the site, they come from Google AdSense and are served entirely by Google acting as its own controller for that data. Ads are never shown inside your transcripts or account screens. The voluntary “watch an ad for free credits” feature uses Google's rewarded-ad experience through Google Ad Manager. Google decides the ad content, may use device/usage data to serve it (per Google's own privacy policy), and only then do we credit the minutes. We do not receive your Google profile from this.</p>
 
         <h3>Deleted data</h3>
         <p>Deleting a job removes its audio and transcript. “Clear history” removes all finished/failed jobs. Deleting your account (write to {CONTACT_EMAIL}) removes your credentials, balances and ledger.</p>
@@ -107,6 +107,9 @@ function Terms() {
 
         <h3>Governing law</h3>
         <p>These terms follow the laws of India; disputes are subject to the exclusive jurisdiction of the courts of Tamil Nadu.</p>
+
+        <h3>Recommendations, affiliate links and ads</h3>
+        <p>Some outbound links are affiliate links for tools we recommend: if you buy through one, we may earn a commission at no extra cost to you. Every affiliate block is labelled as an advertisement/affiliation next to the links; we only list tools relevant to transcription or improving your recordings, and the recommendation text is ours — the commission never dictates what we show. Rewards for watching ads are governed by the rewarded-ad terms of Google Ad Manager.</p>
 
         <h3>Contact</h3>
         <p>{CONTACT_EMAIL}</p>

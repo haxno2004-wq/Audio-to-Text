@@ -104,6 +104,12 @@ class Settings:
     stripe_secret_key: str = os.getenv("STRIPE_SECRET_KEY", "").strip()
     stripe_webhook_secret: str = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
 
+    # Affiliate links — "name|url|note" comma-separated. Shown on the pricing
+    # page ONLY when set, with FTC/ASCI-style disclosure next to every link.
+    # Leave blank for none. Put disclosure-safe programs here, e.g.
+    # HappyScribe|https://bit.ly/XXX|30% recurring with our link, Fireflies…
+    affiliate_links_raw: str = os.getenv("AFFILIATE_LINKS", "").strip()
+
     # Rewarded ads: watch a short ad, earn free transcription minutes.
     # Ad views cannot be verified server-side (AdSense/GAM limitation), so the
     # backend controls abuse with a per-account and per-IP daily cap.
@@ -128,6 +134,16 @@ class Settings:
 
     def work_dir(self, job_id: str) -> Path:
         return self.data_dir / "work" / job_id
+
+    @property
+    def affiliate_links(self) -> list[dict]:
+        """Parse AFFILIATE_LINKS into [{name, url, note}]."""
+        out = []
+        for part in self.affiliate_links_raw.split(","):
+            bits = [b.strip() for b in part.split("|")]
+            if len(bits) == 3 and bits[1].startswith(("http://", "https://")):
+                out.append({"name": bits[0][:60], "url": bits[1], "note": bits[2][:120]})
+        return out
 
     @property
     def credit_bundles(self) -> list[dict]:

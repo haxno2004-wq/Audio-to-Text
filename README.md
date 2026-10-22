@@ -160,6 +160,45 @@ No ads render at all without `ADSENSE_CLIENT`, so self-hosted stays ad-free.
 Reality check: small tools earn roughly $1–5 per 1,000 pageviews — worth having,
 not a substitute for credit sales.
 
+### Affiliates (trustable side income)
+
+A second passive channel, disclosure-safe by construction (renders nothing
+unless configured; every link is labelled as an ad *next to the link* per
+FTC + ASCI rules, links use rel="sponsored"). Research-verified shortlist for
+this site's audience, ranked:
+
+1. **HappyScribe** — up to 30% recurring, 60-day cookie, PayPal/bank monthly ([program](https://www.happyscribe.com/affiliate))
+2. **Fireflies.ai** — up to 30% recurring for 12 months, 90-day attribution window ([program](https://fireflies.ai/affiliate))
+3. **Notta** — 30% per new paying customer via Impact ([program](https://www.notta.ai/en/affiliate))
+4. **Amazon Associates India** — NEFT from ₹1,000; only for genuinely relevant gear ([join](https://affiliate-program.amazon.in))
+
+Config only (no rebuild needed):
+```
+AFFILIATE_LINKS=HappyScribe|https://yoursignup-link|30% recurring transcription subscription with our link, ...
+```
+(Sign up at each program, generate your tracked link, paste it in. Empty → hidden.)
+For payment-gateway go-live see [docs/payments-golive.md](docs/payments-golive.md).
+
+### Trading agent (separate module, paper-first)
+
+`trading-agent/` is a self-contained CoinDCX INR-spot agent, unrelated to the
+web app's runtime: slow trend-following with fee/TDS-aware guardrails tuned
+for a small pilot (₹500 default, ≤50% position, −5% daily loss halt, 3 trades
+cap/day). **It runs in paper mode by default** — every fill is simulated in a
+SQLite ledger — and only trades real money after you set `LIVE_MODE=1` with a
+trade-only, IP-whitelisted API key yourself.
+
+```powershell
+.\.venv\Scripts\python.exe trading-agent\backtest.py BTCINR 1000   # real historical candles
+.\.venv\Scripts\python.exe trading-agent\bot.py --loop             # run in paper mode
+```
+
+Why CoinDCX and not ZebPay? ZebPay *does* now offer a retail API (approval-
+gated, 0.45% entry fees, spot docs "work in progress"), and CoinDCX's API is
+fully documented, algo-trading-friendly and constraint-machine-readable.
+Details and the go-live discipline are in [trading-agent/README.md](trading-agent/README.md).
+**No bot can be guaranteed profitable** — read that README's honesty section.
+
 ## Tests
 `.\.venv\Scripts\python.exe -m pip install pytest` then `.\.venv\Scripts\python.exe -m pytest tests`
 

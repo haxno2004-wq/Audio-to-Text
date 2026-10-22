@@ -3,6 +3,7 @@ import { billingConfig, createOrder, createStripeOrder,
          payWithRazorpay, verifyPayment, verifyStripe } from '../api'
 import AdSlot from './AdSlot.jsx'
 import Reward from './Reward.jsx'
+import Affiliates from './Affiliates.jsx'
 
 const INR = (paise) => `₹${(paise / 100).toLocaleString('en-IN')}`
 
@@ -94,6 +95,7 @@ export default function Pricing({ user, onUser }) {
         ))}
       </div>
       <Reward user={user} onUser={onUser} />
+      <Affiliates />
       {notice && <p className="hint ok-note">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
       <AdSlot slot={import.meta.env.VITE_AD_SLOT_PRICING} className="under-pricing" />

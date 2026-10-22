@@ -274,6 +274,27 @@ h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.12; font-weight: 600; let
 .gateway-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .ok-note { color: var(--accent); margin-top: 12px; }
 
+/* ------------------------------------------------------------ affiliates */
+.affiliates { margin-top: 26px; display: grid; gap: 10px; }
+.affiliates h2 { font-size: 20px; }
+.disclosure { color: var(--ink-3); font-size: 13.5px; max-width: 64ch; }
+.disclosure strong { color: var(--ink-2); }
+.aff-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.aff-card {
+  background: var(--glass); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; display: grid; gap: 4px; text-decoration: none; color: var(--ink);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.aff-card:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.aff-name { font-weight: 600; }
+.aff-name::after { content: ' ↗'; color: var(--ink-3); font-weight: 400; }
+.aff-note { color: var(--ink-2); font-size: 13.5px; }
+.ad-tag {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  background: var(--glass-strong); border: 1px solid var(--line); border-radius: 999px;
+  padding: 2px 10px; margin-left: 8px; vertical-align: middle; color: var(--ink-2);
+}
+
 /* ------------------------------------------------------------ ad slots */
 .adslot { min-height: 90px; align-self: stretch; }
 .adslot:empty { display: none; }

@@ -86,7 +86,7 @@ export default function Reward({ user, onUser }) {
     <section className="reward">
       <div className="reward-card">
         <div>
-          <h3>Short on credits?</h3>
+          <h3>Short on credits? <span className="ad-tag">Sponsored · rewarded ad</span></h3>
           <p className="hint">
             Watch a short ad and we'll add {minutes} free transcription minute{minutes === 1 ? '' : 's'} to your account.
             {cfg.remaining != null && (cfg.remaining > 0

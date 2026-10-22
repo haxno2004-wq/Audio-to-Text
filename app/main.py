@@ -34,6 +34,12 @@ def providers():
     return provider_status()
 
 
+@app.get("/api/affiliates/config")
+def affiliates_config():
+    """Disclosure-gated affiliate recommendations (empty = section hidden)."""
+    return {"enabled": bool(settings.affiliate_links), "links": settings.affiliate_links}
+
+
 @app.get("/api/ads/config")
 def ads_config():
     """Ad presence flag for the SPA (never exposes keys; the script itself
