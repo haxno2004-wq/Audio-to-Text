@@ -252,7 +252,29 @@ h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.12; font-weight: 600; let
 .bundle .price { font-size: 28px; font-weight: 600; }
 .field.row { display: flex; gap: 24px; flex-wrap: wrap; }
 
-/* ---------------------------------------------------------------- ad slots */
+/* ------------------------------------------------------------ info pages */
+.info-page { max-width: 760px; display: flex; flex-direction: column; gap: 6px; }
+.info-page h2 { font-size: clamp(24px, 3vw, 30px); margin: 8px 0 18px; }
+.faq h3 { font-size: 16.5px; font-weight: 600; margin: 22px 0 6px; }
+.faq p { color: var(--ink-2); max-width: 68ch; }
+.faq strong { color: var(--ink); font-weight: 600; }
+.info-foot { margin-top: 30px; }
+
+/* ------------------------------------------------------------ rewarded ad */
+.reward { margin-top: 22px; }
+.reward-card {
+  background: var(--glass); border: 1px dashed rgba(79, 209, 197, 0.35);
+  border-radius: var(--radius); padding: 16px 20px;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+}
+.reward-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.reward-card .hint { max-width: 52ch; }
+
+/* ------------------------------------------------------------ gateways */
+.gateway-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ok-note { color: var(--accent); margin-top: 12px; }
+
+/* ------------------------------------------------------------ ad slots */
 .adslot { min-height: 90px; align-self: stretch; }
 .adslot:empty { display: none; }
 .after-results { margin-top: 28px; opacity: 0.95; }

@@ -99,6 +99,17 @@ class Settings:
         "starter|60|9900, standard|300|39900, pro|900|99900",
     ).strip()
 
+    # Stripe: a second payment gateway shown alongside Razorpay. Leave blank
+    # to disable (the pricing page then only offers Razorpay).
+    stripe_secret_key: str = os.getenv("STRIPE_SECRET_KEY", "").strip()
+    stripe_webhook_secret: str = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+
+    # Rewarded ads: watch a short ad, earn free transcription minutes.
+    # Ad views cannot be verified server-side (AdSense/GAM limitation), so the
+    # backend controls abuse with a per-account and per-IP daily cap.
+    reward_minutes: float = float(os.getenv("REWARD_MINUTES", "1"))
+    reward_daily_cap: int = int(os.getenv("REWARD_DAILY_CAP", "5"))
+
     # ------------------------------------------------------------------ modes
     # "full" runs every enabled model (top accuracy); "budget" runs only the
     # cost-efficient pair (Sarvam + ElevenLabs Scribe) for cheaper paid tiers.

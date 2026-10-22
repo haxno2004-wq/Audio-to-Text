@@ -58,6 +58,26 @@ export function verifyPayment(order, rzOrderId, rzPaymentId, rzSignature) {
   return fetch('/api/billing/verify', { method: 'POST', body: form, headers: authHeaders() }).then(json)
 }
 
+// ---- Stripe (second gateway; the browser is redirected to Stripe Checkout,
+// comes back with ?session_id=... in the hash, and we verify server-side) ----
+export function createStripeOrder(bundleName) {
+  const form = new FormData()
+  form.append('bundle', bundleName)
+  return fetch('/api/billing/stripe/order', { method: 'POST', body: form, headers: authHeaders() }).then(json)
+}
+export function verifyStripe(order, sessionId) {
+  const form = new FormData()
+  form.append('order', order)
+  form.append('session_id', sessionId)
+  return fetch('/api/billing/stripe/verify', { method: 'POST', body: form, headers: authHeaders() }).then(json)
+}
+
+// ---- rewards: watch an ad, earn free minutes ----
+export const rewardsConfig = () => fetch('/api/rewards/config', { headers: authHeaders() }).then(json)
+export function claimReward() {
+  return fetch('/api/rewards/claim', { method: 'POST', headers: authHeaders() }).then(json)
+}
+
 // XHR instead of fetch so we can report upload progress
 export function uploadAudio(file, language, mode, onProgress) {
   return new Promise((resolve, reject) => {

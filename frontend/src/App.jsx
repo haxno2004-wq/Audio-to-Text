@@ -6,6 +6,12 @@ import History from './components/History.jsx'
 import UploadPanel from './components/UploadPanel.jsx'
 import Progress from './components/Progress.jsx'
 import Transcript from './components/Transcript.jsx'
+import Info, { INFO_SECTIONS } from './components/Info.jsx'
+
+const infoFromHash = () => {
+  const h = location.hash.replace('#', '').toLowerCase()
+  return INFO_SECTIONS.includes(h) ? h : null
+}
 
 export default function App() {
   const [jobs, setJobs] = useState([])
@@ -14,6 +20,13 @@ export default function App() {
   const [upload, setUpload] = useState(null) // { name, pct } while the file is going up
   const [error, setError] = useState('')
   const [user, setUser] = useState(null)
+  const [info, setInfo] = useState(infoFromHash)
+
+  useEffect(() => {
+    const onHash = () => setInfo(infoFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   const refresh = useCallback(() => listJobs().then(setJobs).catch(() => {}), [])
   useEffect(() => { refresh() }, [refresh])
@@ -65,7 +78,8 @@ export default function App() {
   const running = job && (job.status === 'queued' || job.status === 'processing')
 
   let main
-  if (upload) main = <Progress title={`Uploading ${upload.name}`} stage="Uploading" pct={upload.pct} />
+  if (info) main = <Info section={info} />
+  else if (upload) main = <Progress title={`Uploading ${upload.name}`} stage="Uploading" pct={upload.pct} />
   else if (activeId && !job) main = <p className="hint">Loading…</p>
   else if (running) main = <Progress title={job.filename} stage={job.stage} pct={job.progress} />
   else if (job?.status === 'failed') {
@@ -85,6 +99,9 @@ export default function App() {
         <a className="brand" href="/">CallTranscript</a>
         <nav>
           <a href="/#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#terms">Terms</a>
         </nav>
         <Account onUser={setUser} />
       </header>

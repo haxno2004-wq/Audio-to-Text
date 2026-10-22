@@ -107,9 +107,27 @@ Billing is **off by default** so self-hosted/local use stays open. To sell acces
      (point the webhook at `https://your-site/api/billing/webhook`, subscribe to `payment.captured`)
    - `CREDIT_BUNDLES=starter|60|9900, standard|300|39900, pro|900|99900`
      (name|minutes|price in paise)
+   - Optional second gateway, shown side by side on the pricing page:
+     `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` (Stripe → Webhooks → add
+     endpoint `https://your-site/api/billing/stripe/webhook`, events
+     `checkout.session.completed` + `checkout.session.async_payment_succeeded`).
+     Any gateway left blank simply disappears from the UI.
 2. Signing up grants the free minutes; buying a bundle opens Razorpay Checkout
-   (UPI/cards) and credits land automatically — via the browser-verified signature
-   or the webhook, whichever arrives first, exactly once per order.
+   (UPI/cards) or redirects to Stripe Checkout. Credits land automatically — via
+   the browser-verified signature/return page or the gateway webhook,
+   whichever arrives first, exactly once per order.
+
+### Earned free minutes (rewarded ads)
+Users can top up without paying: they watch a full-screen **rewarded ad**
+(Google's only policy-compatible incentive format) and get `REWARD_MINUTES`
+(default 1) free credits, up to `REWARD_DAILY_CAP` (default 5) per day per
+account (and a looser per-IP cap so NAT/office networks don't lock people out).
+Enable it by setting in `frontend/.env` before `npm run build`:
+`VITE_REWARDED_NETWORK_ID=<your GAM network id>` and
+`VITE_REWARDED_AD_UNIT=<rewarded unit path>` (create the rewarded ad unit in
+Google Ad Manager). No ad unit configured → users claim directly, still capped.
+Server-side ad-view verification is not offered by Google, so the caps + the
+ledger (`kind=reward` rows) are the control loop.
 3. Credits are **minutes**: successful transcriptions charge `duration + 1 s`;
    failed jobs charge nothing; hitting 0 cents (402) blocks new uploads until top-up.
 
@@ -124,8 +142,12 @@ Billing is **off by default** so self-hosted/local use stays open. To sell acces
 Like competitor sites (Sonix shows an ad below shared transcripts), you can earn
 passively from free-tier visitors with display ads — **off by default**:
 
-1. Apply to [Google AdSense](https://adsense.google.com) with useful public content on the
-   site (a FAQ/info page around the tool helps approval; reviews take days to ~2 weeks).
+1. Apply to [Google AdSense](https://adsense.google.com). The approval content
+   suite is already built in: **FAQ**, **Privacy Policy** and **Terms** pages
+   (topbar links / `#faq`, `#privacy`, `#terms`) plus `frontend/public/robots.txt`.
+   Before applying, replace the placeholder `CONTACT_EMAIL` in
+   `frontend/src/components/Info.jsx` with your real address and rebuild
+   — reviewers reject sites with fake contact info. Reviews take days to ~2 weeks.
 2. Set in `.env`: `ADSENSE_CLIENT=ca-pub-XXXXXXXX`.
 3. Optional: `ADS_TXT=google.com, pub-XXXXXXXX, DIRECT, f08c47fec0942fa0` (served at `/ads.txt`).
 4. Create two display ad units in AdSense and put their slot ids at build time into

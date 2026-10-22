@@ -11,7 +11,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from . import accounts, billing, db
+from . import accounts, billing, billing_stripe, db
 from .config import settings
 from .providers import provider_status
 from . import worker
@@ -107,6 +107,7 @@ def billing_config():
         "bundles": billing.bundles() if accounts.enabled() else [],
         "free_minutes": settings.free_minutes if accounts.enabled() else None,
         "razorpay_available": bool(settings.razorpay_key_id),
+        "stripe_available": billing_stripe.available(),
     }
 
 
@@ -208,6 +209,76 @@ async def billing_webhook(request: Request):
         raise HTTPException(400, str(e))
     except RuntimeError as e:
         raise HTTPException(503, str(e))
+
+
+@app.post("/api/billing/stripe/order")
+async def stripe_order(bundle: str = Form(...), request: Request = None, authorization: str = Header("")):
+    """Create a Stripe Checkout Session for a bundle; the browser redirects to it."""
+    u = billing.resolve_user_from_header(authorization)
+    if not u:
+        raise HTTPException(401, "Sign in to buy credits")
+    base = str(request.base_url)
+    try:
+        return billing_stripe.create_session(u["id"], bundle, base)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+
+@app.post("/api/billing/stripe/verify")
+def stripe_verify(order: str = Form(...), session_id: str = Form(...),
+                  authorization: str = Header("")):
+    """Browser landed back from Checkout: confirm the session server-side."""
+    u = billing.resolve_user_from_header(authorization)
+    if not u:
+        raise HTTPException(401, "Not signed in")
+    try:
+        return billing_stripe.verify_return(u["id"], order.strip(), session_id.strip())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+
+@app.post("/api/billing/stripe/webhook")
+async def stripe_webhook(request: Request):
+    raw = await request.body()
+    sig = request.headers.get("X-Stripe-Signature", "")
+    try:
+        return billing_stripe.handle_webhook(raw, sig)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+
+# ------------------------------------------------------------------ rewards
+
+@app.get("/api/rewards/config")
+def rewards_config(authorization: str = Header("")):
+    enabled = accounts.enabled() and settings.reward_minutes > 0 and settings.reward_daily_cap > 0
+    remaining = None
+    if enabled and authorization:
+        u = billing.resolve_user_from_header(authorization)
+        if u:
+            n_user, _ = accounts.rewards_used_today(u["id"])
+            remaining = max(settings.reward_daily_cap - n_user, 0)
+    return {"enabled": enabled, "minutes": settings.reward_minutes,
+            "daily_cap": settings.reward_daily_cap, "remaining": remaining}
+
+
+@app.post("/api/rewards/claim")
+def rewards_claim(request: Request, authorization: str = Header("")):
+    u = billing.resolve_user_from_header(authorization)
+    if not u:
+        raise HTTPException(401, "Sign in to claim rewards")
+    ip = (request.client.host if request.client else "") or ""
+    try:
+        return accounts.claim_reward(u["id"], ip, settings.reward_minutes,
+                                     settings.reward_daily_cap)
+    except ValueError as e:
+        raise HTTPException(429, str(e))
 
 
 @app.get("/api/jobs/{job_id}/transcript.txt", response_class=PlainTextResponse)

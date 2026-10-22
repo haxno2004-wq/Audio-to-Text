@@ -15,6 +15,8 @@ os.environ["DATA_DIR"] = str(ROOT / "data" / "test_billing")
 os.environ.setdefault("BILLING_ENABLED", "1")
 os.environ.setdefault("FREE_MINUTES", "10")
 os.environ.setdefault("RAZORPAY_WEBHOOK_SECRET", "test-webhook-secret")
+os.environ.setdefault("STRIPE_SECRET_KEY", "sk_test_dummy_key")
+os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "stripe-whsec-test")
 
 from app import accounts, billing, db  # noqa: E402
 from app.config import settings  # noqa: E402
@@ -158,7 +160,113 @@ def test_full_app_still_imports_and_serves():
     assert len(app.main.app.routes) > 5
     api_paths = {getattr(r, "path", "") for r in app.main.app.routes}
     assert {"/api/auth/signup", "/api/auth/login", "/api/billing/order",
-            "/api/billing/verify", "/api/billing/webhook"} <= api_paths
+            "/api/billing/verify", "/api/billing/webhook",
+            "/api/billing/stripe/order", "/api/billing/stripe/verify",
+            "/api/billing/stripe/webhook",
+            "/api/rewards/config", "/api/rewards/claim"} <= api_paths
+
+
+# ---------------------------------------------------------------- Stripe
+
+def test_stripe_return_verification():
+    """Return-page verification credits exactly once and rejects mismatches.
+    Stripe's SDK call is faked (no network) — a dict is enough because
+    verify_return only uses .get()."""
+    import stripe as stripe_mod
+    from app import billing_stripe
+    accounts.init_db()
+    u = accounts.signup("stripe@test.in", "password123")
+    other = accounts.signup("stripe2@test.in", "password123")
+    oid = "lo_stripetest"
+    with accounts._conn() as c:
+        c.execute("INSERT INTO orders (id, user_id, minutes, amount, status, created_at) "
+                  "VALUES (?,?,?,?,?,?)", (oid, u["id"], 60.0, 39900, "created", time.time()))
+
+    def fake(s):   # capture and compare against a wanted session
+        return fake.want
+
+    paid = {"metadata": {"local_order": oid, "user_id": u["id"]}, "payment_status": "paid"}
+    unpaid = {"metadata": {"local_order": "lo_STRIPETWO", "user_id": u["id"]}, "payment_status": "unpaid"}
+    wrong_user = {"metadata": {"local_order": "lo_STRIPETWO", "user_id": other["id"]}, "payment_status": "paid"}
+    mismatched = {"metadata": {"local_order": "lo_OTHER", "user_id": u["id"]}, "payment_status": "paid"}
+    with accounts._conn() as c:   # a still-unpaid second order for the rejection cases
+        c.execute("INSERT INTO orders (id, user_id, minutes, amount, status, created_at) "
+                  "VALUES (?,?,?,?,?,?)", ("lo_STRIPETWO", u["id"], 60.0, 39900, "created", time.time()))
+
+    real = stripe_mod.checkout.Session.retrieve
+    before = accounts.balance(u["id"])
+    fake.want = paid
+    stripe_mod.checkout.Session.retrieve = fake
+    try:
+        out = billing_stripe.verify_return(u["id"], oid, "cs_test_1")
+        assert out["credited"] is True
+        assert accounts.balance(u["id"]) == before + 60.0
+        out2 = billing_stripe.verify_return(u["id"], oid, "cs_test_1")
+        assert out2["credited"] is False and out2["already_paid"] is True
+        assert accounts.balance(u["id"]) == before + 60.0, "double credit!"
+
+        for bad, err in ((unpaid, "not completed"), (wrong_user, "belongs"),
+                         (mismatched, "does not match")):
+            fake.want = bad
+            try:
+                billing_stripe.verify_return(u["id"], "lo_STRIPETWO", "cs_test_2")
+                assert False, f"{err} session should be rejected"
+            except ValueError:
+                pass
+    finally:
+        stripe_mod.checkout.Session.retrieve = real
+
+
+def test_stripe_webhook_signature():
+    """Signed checkout.session.completed events credit; forged ones are rejected.
+    The signature is built exactly as Stripe does it: HMAC(secret, 't.body')."""
+    from app import billing_stripe
+    body = json.dumps({"id": "evt_1", "object": "event",
+                       "type": "checkout.session.completed",
+                       "data": {"object": {"metadata": {}, "payment_status": "unpaid"}}}).encode()
+    t = str(int(time.time()))
+    good = hmac.new(settings.stripe_webhook_secret.encode(), f"{t}.".encode() + body,
+                    hashlib.sha256).hexdigest()
+    header = f"t={t},v1={good}"
+    bad = f"t={t},v1={'0' * 64}"
+    try:
+        billing_stripe.handle_webhook(body, bad)
+        assert False, "forged stripe webhook must be rejected"
+    except ValueError:
+        pass
+    out = billing_stripe.handle_webhook(body, header)
+    assert out["ok"] is True
+
+
+def test_razorpay_webhook_without_local_order_is_ok():
+    body = json.dumps({"event": "payment.captured", "payload": {}}).encode()
+    good = hmac.new(settings.razorpay_webhook_secret.encode(), body, hashlib.sha256).hexdigest()
+    out = billing.handle_webhook(body, good)
+    assert out == {"ok": True, "reason": "no local order in payment notes"}
+
+
+# ---------------------------------------------------------------- rewards
+
+def test_reward_credits_and_daily_cap():
+    accounts.init_db()
+    u = accounts.signup("reward@test.in", "password123")
+    start = accounts.balance(u["id"])
+    cap, minutes = settings.reward_daily_cap, settings.reward_minutes
+    last = None
+    for _ in range(cap):
+        last = accounts.claim_reward(u["id"], "1.2.3.4", minutes, cap)
+    assert accounts.balance(u["id"]) == round(start + cap * minutes, 2)
+    assert last["balance"] == accounts.balance(u["id"])
+    try:
+        accounts.claim_reward(u["id"], "1.2.3.4", minutes, cap)
+        assert False, "over-cap reward claim must fail"
+    except ValueError:
+        pass
+    kinds = [r["kind"] for r in accounts.ledger(u["id"])]
+    assert "reward" in kinds
+    # per-account usage counter matches what the API reports
+    n_user, n_ip = accounts.rewards_used_today(u["id"], "1.2.3.4")
+    assert n_user == cap and n_ip == cap
 
 
 if __name__ == "__main__":

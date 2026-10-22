@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at   REAL NOT NULL,
   expires_at   REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS reward_claims (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      TEXT NOT NULL REFERENCES users(id),
+  ip           TEXT NOT NULL DEFAULT '',
+  minutes      REAL NOT NULL,
+  created_at   REAL NOT NULL
+);
 """
 
 
@@ -186,6 +193,44 @@ def add_minutes(user_id: str, minutes: float, kind: str, note: str) -> float:
         c.execute("INSERT INTO ledger (user_id, kind, minutes, note, created_at) VALUES (?,?,?,?,?)",
                   (user_id, kind, round(minutes, 2), note, time.time()))
     return new_bal
+
+
+# ------------------------------------------------------------------ rewards
+
+def _utc_day_start() -> float:
+    return time.time() - (time.time() % 86400)
+
+
+def rewards_used_today(user_id: str, ip: str = "") -> tuple[int, int]:
+    """(claims_by_this_user_today, claims_from_this_ip_today) since UTC midnight."""
+    day = _utc_day_start()
+    with _conn() as c:
+        n_user = c.execute("SELECT COUNT(*) AS n FROM reward_claims "
+                           "WHERE user_id=? AND created_at>=?", (user_id, day)).fetchone()["n"]
+        n_ip = 0
+        if ip:
+            n_ip = c.execute("SELECT COUNT(*) AS n FROM reward_claims "
+                             "WHERE ip=? AND created_at>=?", (ip, day)).fetchone()["n"]
+    return n_user, n_ip
+
+
+def claim_reward(user_id: str, ip: str, minutes: float, daily_cap: int) -> dict:
+    """Credit free minutes for a rewarded-ad view. Enforces cap and records it.
+
+    Raises ValueError('reward limit reached') when the account (or the IP it
+    comes from) has already claimed today's cap.
+    """
+    if minutes <= 0 or daily_cap <= 0:
+        raise ValueError("Rewards are disabled")
+    n_user, n_ip = rewards_used_today(user_id, ip)
+    if n_user >= daily_cap or n_ip >= daily_cap * 3:   # IP cap is looser: shared offices/NAT
+        raise ValueError("Daily reward limit reached — come back tomorrow")
+    with _conn() as c:
+        c.execute("INSERT INTO reward_claims (user_id, ip, minutes, created_at) VALUES (?,?,?,?)",
+                  (user_id, ip or "", minutes, time.time()))
+    bal = add_minutes(user_id, minutes, "reward", "watched ad")
+    return {"credited": minutes, "balance": bal,
+            "remaining": daily_cap - n_user - 1}
 
 
 def deduct_minutes(user_id: str, minutes: float, note: str) -> float:
