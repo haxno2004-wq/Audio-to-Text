@@ -5,8 +5,3 @@ models/
 frontend/node_modules/
 __pycache__/
 *.pyc
-
-# trading-agent working files
-trading-agent/paper.ledger.db
-trading-agent/test_*.db
-trading-agent/.env
